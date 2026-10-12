@@ -94,6 +94,7 @@ One JSON line per request: request ID, method, clipped path, documented paramete
 | `npm audit` reports 4 high-severity alerts in `braces` (deeply nested glob patterns can exhaust the stack), through Netlify's bundler. | The bundler only runs at build time on this repo's own fixed patterns, never on input from anyone else. npm's only fix is a downgrade of the bundler by seven major versions. Revisit when the bundler updates its dependency. |
 | No global rate limit. | It would turn a cost attack into an availability attack. Usage alerts and caching cover cost instead. |
 | Platform `429` responses with an empty body. | Only clients that keep sending after a `429` see them, and the docs say to treat any `429` the same way. |
+| No DNSSEC on `marlasowards.com`. | Netlify DNS doesn't offer it for this domain. The API is HTTPS-only with HSTS, so a forged DNS answer would lead browsers to a server whose certificate they reject, and the CAA record limits who can issue a valid one. Moving DNS away from Netlify to get DNSSEC isn't worth it. |
 | Visitor IP addresses in Netlify's platform logs. | Netlify's standard logging, outside this code's control. The API's own logs don't include them. |
 
 ## Settings outside the code
@@ -116,7 +117,8 @@ These are configured in GitHub, Netlify, and DNS. Check them after any change to
 
 **DNS (Netlify DNS for `marlasowards.com`):**
 
-- A CAA record that lets only Let's Encrypt (`letsencrypt.org`), which Netlify uses, issue certificates for the domain.
+- A CAA record that lets only Let's Encrypt (`letsencrypt.org`), which Netlify uses, issue certificates for the domain. Added 11 October 2026.
+- No DNSSEC: Netlify DNS doesn't offer it for this domain (see [Accepted risks](#accepted-risks)).
 - If a Netlify site that uses a subdomain is ever deleted, delete its DNS record too, so nobody else can claim the subdomain.
 
 ## Security review history
