@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import yaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 import handler from '../netlify/functions/norway-data/norway-data.mjs';
 import rateLimitedHandler from '../netlify/functions/rate-limited/rate-limited.mjs';
 import { categories, facts, places } from '../netlify/functions/norway-data/data.mjs';
@@ -25,7 +25,7 @@ import { categories, facts, places } from '../netlify/functions/norway-data/data
 console.log = () => {};
 const print = (...args) => process.stdout.write(`${args.join(' ')}\n`);
 
-const spec = yaml.load(readFileSync(new URL('../public/openapi/norway-data.yaml', import.meta.url), 'utf8'));
+const spec = loadYaml(readFileSync(new URL('../public/openapi/norway-data.yaml', import.meta.url), 'utf8'));
 const serverUrl = new URL(spec.servers[0].url);
 const basePath = serverUrl.pathname;
 // The placeholder request ID used in every documented example.

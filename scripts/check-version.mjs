@@ -10,14 +10,14 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import yaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 
 const SPEC = 'public/openapi/norway-data.yaml';
 const API_PATHS = ['netlify/functions/', SPEC];
 
 const base = process.argv[2];
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
-const versionOf = (text) => yaml.load(text).info.version;
+const versionOf = (text) => loadYaml(text).info.version;
 
 const failures = [];
 const head = readFileSync(SPEC, 'utf8');
