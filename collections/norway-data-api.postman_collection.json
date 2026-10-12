@@ -1,0 +1,483 @@
+{
+  "info": {
+    "name": "Norway Data API",
+    "description": "Requests for every endpoint of the [Norway Data API](https://www.marlasowards.com/api-reference), plus examples of each kind of error.\n\nNo key is needed. Every request has tests: run the whole collection to check that the API works as documented.\n\nVariables: `baseUrl` is the base URL, and `factId` is the fact that **Get a fact** gets. **Get a random fact** sets `factId`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.marlasowards.com/norway-data/v1"
+    },
+    {
+      "key": "factId",
+      "value": "3"
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Allows requests from any origin', () => pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('*'));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Index",
+      "item": [
+        {
+          "name": "Get the API index",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Links to each collection', () => pm.expect(pm.response.json().links).to.have.keys('facts', 'randomFact', 'categories', 'places'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": []
+            },
+            "description": "The starting point, with links to each collection."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Facts",
+      "item": [
+        {
+          "name": "List facts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has data and pagination', () => { const body = pm.response.json(); pm.expect(body.data).to.be.an('array'); pm.expect(body.pagination).to.have.property('total'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts?category=culture&place=oslo&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "culture",
+                  "description": "A category ID from List categories."
+                },
+                {
+                  "key": "place",
+                  "value": "oslo",
+                  "description": "A place ID from List places."
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page, 1-50."
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Items to skip.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "A page of facts. Filter by `category`, `place`, or both. Enable or change the query parameters to try other filters."
+          },
+          "response": []
+        },
+        {
+          "name": "Get a random fact",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('factId', String(pm.response.json().id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/random-fact",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "random-fact"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "nature",
+                  "description": "Only choose from this category.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "A fact chosen at random. Sets the `factId` variable, so **Get a fact** gets the same fact."
+          },
+          "response": []
+        },
+        {
+          "name": "Get a fact",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns the requested fact', () => pm.expect(String(pm.response.json().id)).to.eql(pm.collectionVariables.get('factId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts/{{factId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts",
+                "{{factId}}"
+              ]
+            },
+            "description": "One fact by its ID. Uses the `factId` variable, which **Get a random fact** sets."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has data and pagination', () => { const body = pm.response.json(); pm.expect(body.data).to.be.an('array'); pm.expect(body.pagination).to.have.property('total'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Items per page, 1-50."
+                }
+              ]
+            },
+            "description": "Every category. Use an `id` as the `category` filter."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Places",
+      "item": [
+        {
+          "name": "List places",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has data and pagination', () => { const body = pm.response.json(); pm.expect(body.data).to.be.an('array'); pm.expect(body.pagination).to.have.property('total'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/places?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "places"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Items per page, 1-50."
+                }
+              ]
+            },
+            "description": "Places that facts are about. Use an `id` as the `place` filter."
+          },
+          "response": []
+        },
+        {
+          "name": "Get a place",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns Sognefjord', () => pm.expect(pm.response.json().name).to.eql('Sognefjord'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/places/sognefjord",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "places",
+                "sognefjord"
+              ]
+            },
+            "description": "One place by its ID."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "description": "One request for each kind of error a client can cause. See [Errors](https://www.marlasowards.com/api-reference#description/errors).",
+      "item": [
+        {
+          "name": "Unknown parameter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Body is problem details', () => pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/problem+json'));",
+                  "pm.test('Error type is invalid-parameter', () => pm.expect(pm.response.json().type).to.eql('tag:marlasowards.com,2026:norway-data/invalid-parameter'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts?limt=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts"
+              ],
+              "query": [
+                {
+                  "key": "limt",
+                  "value": "5",
+                  "description": "Misspelled on purpose."
+                }
+              ]
+            },
+            "description": "A misspelled parameter returns `400`, and `errors` lists the allowed ones."
+          },
+          "response": []
+        },
+        {
+          "name": "Value not allowed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Body is problem details', () => pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/problem+json'));",
+                  "pm.test('Error type is invalid-parameter', () => pm.expect(pm.response.json().type).to.eql('tag:marlasowards.com,2026:norway-data/invalid-parameter'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts?category=History",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "History",
+                  "description": "Should be lowercase."
+                }
+              ]
+            },
+            "description": "Values are case-sensitive, so `History` returns `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "ID with leading zeros",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Body is problem details', () => pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/problem+json'));",
+                  "pm.test('Error type is invalid-parameter', () => pm.expect(pm.response.json().type).to.eql('tag:marlasowards.com,2026:norway-data/invalid-parameter'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts/010",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts",
+                "010"
+              ]
+            },
+            "description": "Each resource has one URL, so `/facts/010` returns `400`."
+          },
+          "response": []
+        },
+        {
+          "name": "Fact not found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Body is problem details', () => pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/problem+json'));",
+                  "pm.test('Error type is not-found', () => pm.expect(pm.response.json().type).to.eql('tag:marlasowards.com,2026:norway-data/not-found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts/99",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts",
+                "99"
+              ]
+            },
+            "description": "An ID that no fact has returns `404`."
+          },
+          "response": []
+        },
+        {
+          "name": "Method not allowed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 405', () => pm.response.to.have.status(405));",
+                  "pm.test('Body is problem details', () => pm.expect(pm.response.headers.get('Content-Type')).to.eql('application/problem+json'));",
+                  "pm.test('Error type is method-not-allowed', () => pm.expect(pm.response.json().type).to.eql('tag:marlasowards.com,2026:norway-data/method-not-allowed'));",
+                  "pm.test('Allow header lists the methods', () => pm.expect(pm.response.headers.get('Allow')).to.eql('GET, HEAD, OPTIONS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/facts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "facts"
+              ]
+            },
+            "description": "Only `GET`, `HEAD`, and `OPTIONS` are allowed. The `Allow` header lists them."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

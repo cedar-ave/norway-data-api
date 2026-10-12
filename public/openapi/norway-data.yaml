@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.8
+  version: 1.1.9
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -54,7 +54,13 @@ info:
     For a step-by-step walkthrough in JavaScript or Python, see the
     tutorial [Show a random fact with its places](https://www.marlasowards.com/samples/norway-data-api-guides/show-a-random-fact).
     More guides cover getting every item in a collection, handling errors
-    and retries, caching, and calling the API from a browser.
+    and retries, caching, and calling the API from a browser. For a
+    complete sample app, see [Build a fact of the day page](https://www.marlasowards.com/samples/norway-data-api-guides/fact-of-the-day).
+
+    To try every endpoint without writing code, see
+    [Explore the API in Postman](https://www.marlasowards.com/samples/norway-data-api-guides/explore-in-postman).
+    The Postman collection also has a request for each kind of error, and
+    tests you can run on the whole collection.
 
     ## Authentication
 
@@ -354,6 +360,51 @@ info:
     The `type` values are identifiers, not web addresses. They don't open a
     page.
 
+    ## Best practices
+
+    - **Store IDs, not names or titles.** IDs never change, but a fact's
+      title or a place's description can be corrected.
+    - **Follow the pagination links** in `pagination.links` instead of
+      building page URLs yourself. They keep your filters and `limit`.
+      See the guide [Get every item in a collection](https://www.marlasowards.com/samples/norway-data-api-guides/get-every-item).
+    - **Expect new values.** Ignore fields you don't recognize, and handle
+      category IDs, place types, and error `type` values that are new to
+      you.
+    - **Handle errors by `status` and `type`,** never by the wording of
+      `detail` or `title`. Retry only `429` and `500`. See the guide
+      [Handle errors and retries](https://www.marlasowards.com/samples/norway-data-api-guides/handle-errors-and-retries).
+    - **Log the `requestId`** of every error, so you can include it in an
+      issue.
+    - **Reuse responses** for the `max-age` in their `Cache-Control`
+      header, then check them with `If-None-Match`. See the guide
+      [Cache responses with ETags](https://www.marlasowards.com/samples/norway-data-api-guides/cache-responses).
+    - **Use `limit=50`** to get a whole collection in as few requests as
+      possible.
+    - **In a browser, send no extra request headers,** such as
+      `Content-Type` on a `GET`. See the guide
+      [Call the API from a browser](https://www.marlasowards.com/samples/norway-data-api-guides/call-from-a-browser).
+    - **Call the current base URL directly,** not the old one, so requests
+      don't need a redirect.
+
+    ## Troubleshooting
+
+    | Problem | Cause | Fix |
+    | --- | --- | --- |
+    | `400` with `Unknown parameter` | A misspelled or unsupported query parameter, such as `limt` | Use a parameter from the list in the error's `errors` array. |
+    | `400` for a value that looks right, such as `category=History` | Values are case-sensitive | Use the ID exactly as `/categories` or `/places` returns it, such as `history`. |
+    | `400` for `/facts?place=...` | The place ID doesn't exist. An unknown place is an error, not an empty list. | Get place IDs from `/places`. |
+    | `400` for `/facts/010` | IDs can't have leading zeros | Use `/facts/10`. |
+    | `404` for a path that looks right, such as `/Facts` | Paths are case-sensitive, or the path is misspelled | Use the paths in [Endpoints at a glance](#description/endpoints-at-a-glance). A trailing slash is fine. |
+    | `data` is an empty array | No items match the filters, or `offset` is past the end | Check `pagination.total`. If it's `0`, nothing matches. |
+    | `curl` prints nothing, or a `301` | The request used the old base URL | Add `-L` to follow the redirect, or switch to the current base URL. |
+    | `429 Too Many Requests` | More than 60 requests in 60 seconds from your IP address | Wait for the seconds in `Retry-After`, or 60 seconds if it's missing. See [Rate limits](#description/rate-limits). |
+    | A browser reports `Failed to fetch` | An extra request header made the browser send a preflight request, which the API refused | Remove headers other than `If-None-Match`. The browser's developer console shows the real reason. |
+    | A response doesn't show a recent change | Responses can be cached for up to an hour | Send the cached `ETag` in `If-None-Match`. In a browser, call `fetch` with `cache: 'no-cache'`. |
+    | Characters such as `å` or `ø` look garbled | The response was decoded with the wrong encoding | Decode responses as UTF-8. |
+
+    If none of these help, [open an issue](https://github.com/cedar-ave/norway-data-api/issues)
+    with the request and the `requestId` from the error.
+
     ## Versioning
 
     The major version is part of the base URL (`/v1`). Within `v1`, changes
@@ -371,10 +422,28 @@ info:
     URL. Most HTTP clients follow redirects automatically. With `curl`, add
     `-L`.
 
+    ## Availability
+
+    The API is a free sample run by one person. It has no service level
+    agreement (SLA): no uptime guarantee, no support hours, and no notice
+    before maintenance. In practice:
+
+    - An automated check calls the production API every hour, and a
+      failure alerts the maintainer.
+    - Each release goes live only if its tests pass.
+    - A change that could break clients would ship as a new major version.
+      See [Versioning](#description/versioning).
+
+    Don't depend on the API for anything critical. If your app needs the
+    data to always be there, cache it, or copy the whole dataset: it fits
+    in a few requests, and the [MIT license](#description/about-the-data)
+    allows it. To report an outage, [open an issue](https://github.com/cedar-ave/norway-data-api/issues).
+
     ## Changelog
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.9 | 12 October 2026 | Reference page only: new Best practices, Troubleshooting, Availability, and Glossary sections, and links to a Postman collection and a fact of the day sample app. |
     | 1.1.8 | 12 October 2026 | Reference page only: endpoints and errors have several named examples, such as a filter with no matches, the last page, an `offset` past the end, an unknown place ID, and a repeated parameter. |
     | 1.1.7 | 12 October 2026 | Reference page only: what you can build with the API, a diagram of how facts, categories, and places relate, and a table of endpoints. |
     | 1.1.6 | 12 October 2026 | A rate-limited request's `429` response now has the requested path in `instance`, instead of an internal path. The reference page also says which request headers browsers can send, and why browser code shouldn't set `If-None-Match` itself. |
@@ -398,6 +467,24 @@ info:
     - The data is available under the same MIT license as the API's code.
     - To report an error in a fact or a bug in the API, open an issue in
       the [API's GitHub repository](https://github.com/cedar-ave/norway-data-api/issues).
+
+    ## Glossary
+
+    | Term | Meaning |
+    | --- | --- |
+    | Base URL | The part of every endpoint's URL before its path: `https://api.marlasowards.com/norway-data/v1`. |
+    | Collection | A list of resources, such as `/facts`. Always returned one page at a time. See [Pagination](#description/pagination). |
+    | Conditional request | A request with an `If-None-Match` header. If the response hasn't changed, the API returns `304 Not Modified` with no body. See [Caching](#description/caching). |
+    | CORS | Cross-Origin Resource Sharing: the rules that decide whether a web page can call an API on another domain. Any page can call this API. |
+    | `ETag` | A response header that identifies one version of a response. Send it back in `If-None-Match` to check whether the response changed. |
+    | `limit` and `offset` | Query parameters that pick a page: `limit` is how many items, and `offset` is how many to skip. |
+    | Preflight request | An `OPTIONS` request a browser sends before a request with extra headers, to ask whether the API allows them. |
+    | Problem details | The standard JSON format for errors, from RFC 9457. See [Errors](#description/errors). |
+    | Rate limit | The most requests one IP address can send: 60 in any 60 seconds. See [Rate limits](#description/rate-limits). |
+    | Request ID | The `requestId` in an error, which identifies that request in the API's logs. |
+    | Resource | One fact, category, or place. |
+    | Slug | An ID made from a name in lowercase ASCII letters, digits, and hyphens, such as `galdhopiggen` for Galdhøpiggen. Category and place IDs are slugs. |
+    | Tag URI | An identifier that looks like `tag:marlasowards.com,2026:...`. Error `type` values use it. It names something without being a web address. |
 externalDocs:
   description: Tutorial and how-to guides
   url: https://www.marlasowards.com/samples/norway-data-api-guides/show-a-random-fact

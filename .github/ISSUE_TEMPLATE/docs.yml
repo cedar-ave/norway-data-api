@@ -1,0 +1,20 @@
+name: Docs feedback
+description: Something in the API reference or guides is unclear, wrong, or missing.
+title: 'Docs: '
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: The URL of the page. The guides' feedback links fill this in.
+      placeholder: https://www.marlasowards.com/samples/norway-data-api-guides/get-every-item
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What's unclear, wrong, or missing
+      description: If you were trying to do something, say what, and where you got stuck.
+    validations:
+      required: true

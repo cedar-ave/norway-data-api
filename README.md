@@ -5,6 +5,7 @@ A small, public, read-only REST API with short facts about Norway and the places
 - **API reference:** https://www.marlasowards.com/api-reference
 - **Base URL:** `https://api.marlasowards.com/norway-data/v1`
 - **OpenAPI spec:** https://api.marlasowards.com/openapi/norway-data.yaml (source: [`public/openapi/norway-data.yaml`](public/openapi/norway-data.yaml), OpenAPI 3.1)
+- **Postman collection:** [`collections/norway-data-api.postman_collection.json`](collections/norway-data-api.postman_collection.json), with a request for every endpoint and each kind of error, and tests
 
 ```bash
 curl https://api.marlasowards.com/norway-data/v1/facts/10
@@ -57,6 +58,7 @@ npm run lint             # Redocly lint of the spec
 npm run check:bundle     # bundles the functions like Netlify does
 npm run dev              # runs the functions locally with the Netlify CLI
 npm run smoke -- <url>   # smoke test a deployed copy, such as a deploy preview's URL
+npm run collection       # runs the Postman collection's tests against production, with Newman
 ```
 
 With `npm run dev` running, the API is at `http://localhost:8888/norway-data/v1`.
