@@ -33,6 +33,14 @@ This repo deploys to its own Netlify site. The site has no build step: Netlify p
 
 The reference page itself is a Docusaurus page on marlasowards.com, rendered by [Scalar](https://scalar.com) from the spec at that URL.
 
+## Docs
+
+- [The Netlify Function](docs/function.md): routing, validation, pagination, caching, errors, and headers
+- [The OpenAPI spec](docs/spec.md): layout, conventions, the introduction, and how examples are tied to real responses
+- [The contract test](docs/contract-test.md): what it checks and how
+- [Maintaining the API](docs/maintenance.md): adding facts, places, categories, and endpoints, and troubleshooting
+- [Design decisions](docs/design-decisions.md): how the API got its current shape, and why
+
 ## Develop
 
 Requires Node.js 20 or later.
