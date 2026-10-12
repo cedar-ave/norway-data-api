@@ -31,8 +31,21 @@ function check(ok, message) {
   if (!ok) failures.push(message);
 }
 
+// Retries network errors (not HTTP errors) a few times: under bursts, a
+// connection is occasionally reset before a response arrives.
+async function fetchWithRetry(url, init, attempts = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      if (i >= attempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 500 * i));
+    }
+  }
+}
+
 async function get(url, init = {}) {
-  const res = await fetch(url, { redirect: 'manual', ...init });
+  const res = await fetchWithRetry(url, { redirect: 'manual', ...init });
   const text = await res.text();
   let body = null;
   try {
