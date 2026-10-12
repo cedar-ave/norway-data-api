@@ -104,7 +104,7 @@ The contract test calls the functions in memory, so it can't catch problems that
 
 `.github/workflows/smoke.yml` runs it:
 
-- **After each successful Netlify deploy**, against that deploy's URL, with `--rate-limit`. Netlify reports deploys to GitHub as deployments, which trigger the workflow.
+- **After each push to `main`**, against production, with `--rate-limit`. It first waits until production serves a spec with the pushed version, which means Netlify finished deploying it. CI requires a version bump for every API change, so this always tests the new deploy. (Netlify doesn't report production deploys to GitHub, so the workflow can't be triggered by the deploy itself.)
 - **Every hour**, against production, with `--redirects`. This is the API's uptime check: when a scheduled workflow fails, GitHub emails the repo owner.
 
 Two bugs that reached production before the smoke test existed are exactly what it now checks: pagination links that pointed at the `netlify.app` host, and a rate limit that proxied requests skipped.

@@ -31,7 +31,7 @@ This repo deploys to its own Netlify site, whose primary domain is `api.marlasow
 | --- | --- | --- |
 | Spec lint and contract test | Netlify's build command, on every deploy | A failing deploy never goes live. |
 | Lint, contract test, function bundling, version check | CI, on every push and pull request | Also catches Netlify config errors, and API changes without a new version and changelog entry. |
-| Smoke test with rate limit check | After each successful deploy | Problems that only exist once deployed: routing, CDN caching, CORS, the rate limiter, wrong-host links. |
+| Smoke test with rate limit check | After each push to `main`, once production serves the new version | Problems that only exist once deployed: routing, CDN caching, CORS, the rate limiter, wrong-host links. |
 | Smoke test with redirect checks | Every hour, against production | The API being down. A failed run emails the repo owner. |
 
 ## Docs

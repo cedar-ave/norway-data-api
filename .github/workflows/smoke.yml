@@ -1,14 +1,17 @@
 # Smoke tests against the deployed API, over the real network (see
 # scripts/smoke-test.mjs).
-# - After each successful Netlify deploy, Netlify reports a GitHub
-#   deployment; this tests that deploy's URL, including the rate limit.
+# - After each push to main, this waits until production serves the pushed
+#   spec's version (which means Netlify finished deploying it), then tests
+#   production, including the rate limit. Every API change bumps the
+#   version (CI enforces it), so this always tests the new deploy.
 # - Every hour, this tests production, including the redirects to it. A
 #   failure is the API's uptime alert: GitHub emails the repo owner when a
 #   scheduled workflow fails.
 name: Smoke test
 
 on:
-  deployment_status:
+  push:
+    branches: [main]
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -18,20 +21,29 @@ permissions:
 
 jobs:
   deploy:
-    name: Deployed copy
-    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success'
+    name: After deploy
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - name: Smoke test the deploy
-        run: npm run smoke -- "${{ github.event.deployment_status.environment_url }}" --rate-limit
+      - name: Wait for production to serve this version
+        run: |
+          version=$(sed -n 's/^  version: //p' public/openapi/norway-data.yaml | head -1)
+          for i in $(seq 1 60); do
+            live=$(curl -fsS https://api.marlasowards.com/openapi/norway-data.yaml | sed -n 's/^  version: //p' | head -1 || true)
+            if [ "$live" = "$version" ]; then echo "Production serves $version."; exit 0; fi
+            echo "Production serves '$live', waiting for $version..."; sleep 10
+          done
+          echo "Production never served $version. Check the Netlify deploy log."; exit 1
+      - name: Smoke test production
+        run: npm run smoke -- https://api.marlasowards.com --rate-limit
 
   production:
     name: Production
-    if: github.event_name != 'deployment_status'
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
