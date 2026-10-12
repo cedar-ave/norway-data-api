@@ -1,0 +1,38 @@
+# Lints the OpenAPI spec and runs the contract test, which checks the
+# function's responses against the spec. Netlify deploys on every push no
+# matter what this reports, so merge through pull requests with this check
+# required if a failing run should block publishing.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: Spec lint + contract test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint the OpenAPI spec
+        run: npm run lint
+
+      - name: Run the contract test
+        run: npm test

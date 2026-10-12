@@ -1,0 +1,16 @@
+# The site has no build step. Netlify publishes public/ as-is (the OpenAPI
+# spec) and bundles the function in netlify/functions/.
+
+[build]
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+
+# The API is meant to be called through https://www.marlasowards.com, which
+# proxies /api/norway-data/* and /openapi/norway-data.yaml here. Visitors to
+# this site's root get sent to the reference page.
+[[redirects]]
+  from = "/"
+  to = "https://www.marlasowards.com/api-reference"
+  status = 302
