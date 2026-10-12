@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.6
+  version: 1.1.7
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -13,6 +13,22 @@ info:
   # update the example whenever the data or the API changes.
   description: |
     This is a REST API I built as a sample for my portfolio site. The code samples work. The API returns short facts about Norway and the places they're about. The code, spec, and tests are on [GitHub](https://github.com/cedar-ave/norway-data-api).
+
+    ## What you can build
+
+    The API is small, free, and needs no key, so it's quick to try. Use it
+    to build a small app, try out an HTTP client, or teach how REST APIs
+    work. For example:
+
+    - **Fact of the day:** call `/random-fact` and show the fact's title
+      and text.
+    - **Quiz:** show a fact from `/facts` and ask which category it's in.
+      Get the answer choices from `/categories`.
+    - **Place card:** show a place from `/places/{id}`, with the facts
+      about it from `/facts?place={id}`.
+    - **A REST lesson:** the API uses common patterns, such as paginated
+      collections with links, `ETag` caching, rate limits, and problem
+      details errors, in a dataset small enough to read in full.
 
     ## Quick start
 
@@ -54,6 +70,15 @@ info:
     - **Categories:** the topics facts are grouped into.
     - **Places:** locations in Norway that facts are about, such as a fjord,
       mountain, or city.
+
+    ```text
+    +----------+  exactly one  +------+  zero or more  +-------+
+    | Category | <------------ | Fact | -------------> | Place |
+    +----------+   category    +------+    placeIds    +-------+
+    ```
+
+    Arrows point from a fact to the resources its fields refer to. A
+    category or place can have any number of facts.
 
     A list of resources is called a **collection**, such as `/facts` or
     `/places`.
@@ -109,6 +134,21 @@ info:
       }
     }
     ```
+
+    ## Endpoints at a glance
+
+    | Endpoint | Returns | Query parameters |
+    | --- | --- | --- |
+    | `GET /` | Links to each collection and to this reference | None |
+    | `GET /facts` | A page of facts | `category`, `place`, `limit`, `offset` |
+    | `GET /facts/{id}` | One fact | None |
+    | `GET /random-fact` | One fact chosen at random | `category` |
+    | `GET /categories` | A page of categories | `limit`, `offset` |
+    | `GET /places` | A page of places | `limit`, `offset` |
+    | `GET /places/{id}` | One place | None |
+
+    There's no endpoint for a single category. Each category's name and
+    description are in `/categories`.
 
     ## Request rules
 
@@ -335,6 +375,7 @@ info:
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.7 | 12 October 2026 | Reference page only: what you can build with the API, a diagram of how facts, categories, and places relate, and a table of endpoints. |
     | 1.1.6 | 12 October 2026 | A rate-limited request's `429` response now has the requested path in `instance`, instead of an internal path. The reference page also says which request headers browsers can send, and why browser code shouldn't set `If-None-Match` itself. |
     | 1.1.5 | 12 October 2026 | Reference page only: links to a new tutorial and how-to guides. |
     | 1.1.4 | 12 October 2026 | A rate-limited request's `429` response now has the requested path in `instance`, instead of an internal path. This didn't work in production. Fixed in 1.1.6. |

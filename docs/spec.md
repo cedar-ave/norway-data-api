@@ -36,9 +36,11 @@
 
 | Section | Covers |
 | --- | --- |
+| What you can build | Who the API is for and example uses |
 | Quick start | A first request and its response |
 | Authentication | None needed |
-| Data model | Facts, categories, places, how they relate, and how IDs work |
+| Data model | Facts, categories, places, a diagram of how they relate, and how IDs work |
+| Endpoints at a glance | Every endpoint, what it returns, and its query parameters |
 | Request rules | Base URL, methods, strict parameters, unknown paths, CORS |
 | Response format | JSON conventions and the collection vs. single-resource rule |
 | Pagination | `limit`, `offset`, and page links |
