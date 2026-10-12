@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.4
+  version: 1.1.5
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -34,6 +34,11 @@ info:
 
     Next, try `GET /random-fact` for a different fact each time, or start
     at `GET /`, which links to every collection.
+
+    For a step-by-step walkthrough in JavaScript or Python, see the
+    tutorial [Show a random fact with its places](https://www.marlasowards.com/samples/norway-data-api-guides/show-a-random-fact).
+    More guides cover getting every item in a collection, handling errors
+    and retries, caching, and calling the API from a browser.
 
     ## Authentication
 
@@ -322,6 +327,7 @@ info:
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.5 | 12 October 2026 | Reference page only: links to a new tutorial and how-to guides. |
     | 1.1.4 | 12 October 2026 | A rate-limited request's `429` response now has the requested path in `instance`, instead of an internal path. |
     | 1.1.3 | 12 October 2026 | Reference page only: clearer endpoint and parameter descriptions, advice on staying under the rate limit, and examples that match what **Test Request** returns. |
     | 1.1.2 | 11 October 2026 | Reference page only: parameter examples now work together, so **Test Request** on **List facts** returns results. |
@@ -341,6 +347,9 @@ info:
     - The data is available under the same MIT license as the API's code.
     - To report an error in a fact or a bug in the API, open an issue in
       the [API's GitHub repository](https://github.com/cedar-ave/norway-data-api/issues).
+externalDocs:
+  description: Tutorial and how-to guides
+  url: https://www.marlasowards.com/samples/norway-data-api-guides/show-a-random-fact
 servers:
   - url: https://api.marlasowards.com/norway-data/v1
     description: Production

@@ -36,8 +36,25 @@ export default async (req, context) => {
     requestId,
     { 'Retry-After': String(RETRY_AFTER_SECONDS) },
   );
+  logRewriteDiagnostic(req, context, requestId);
   return log(requested, res, requestId, started);
 };
+
+// TEMPORARY (1.1.5): context.url turned out to be /_rate-limited too, so
+// this logs what else Netlify passes after the rewrite, to find the original
+// path. It logs header names only, never values, like the rule for query
+// parameters in log(): a client can send any header, with anything in it.
+// Remove it once the question is answered. To read it, search the function
+// logs for "rate-limit-rewrite".
+const clip = (text, max) => (text.length > max ? `${text.slice(0, max)}…` : text);
+function logRewriteDiagnostic(req, context, requestId) {
+  console.log(JSON.stringify({
+    requestId,
+    diagnostic: 'rate-limit-rewrite',
+    contextUrlPath: context?.url ? clip(new URL(context.url).pathname, 128) : null,
+    headerNames: [...req.headers.keys()].sort(),
+  }));
+}
 
 // Must be literals - Netlify reads this at deploy time without running the code.
 export const config = {
