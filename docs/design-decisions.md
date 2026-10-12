@@ -107,9 +107,33 @@ A security review the same day found two exploitable problems in production, bot
 | Logs kept full query strings, and errors echoed client input at any length | Only documented parameters are logged, and echoed values are clipped. |
 | No CAA record, no usage alerts, deploy previews possibly building outsiders' code, account 2FA unverified | Documented as required settings in [Security](security.md#settings-outside-the-code). |
 
+## Docs and browser review
+
+A fourth review, on 12 October 2026, measured the docs against common API documentation practice and tested the API from a real browser. It also added a tutorial and how-to guides on marlasowards.com.
+
+| Finding | Change |
+| --- | --- |
+| Endpoint descriptions said what each endpoint returns, not what it's for | Each one says what it's for and how it connects to the others. Released as 1.1.3. |
+| Undocumented behavior: with both filters, a fact must match both, and an unknown `place` returns `400` | Both documented in 1.1.3. |
+| **Test Request** returned something different from the documented examples | Parameter and response examples now match. Released as 1.1.3. |
+| No advice on staying under the rate limit, and no mention that there's no remaining-requests header | Documented in 1.1.3. |
+| A rate-limited `429` reported `/_rate-limited`, the internal rewrite target, as its `instance` | `instance` comes from Netlify's undocumented `netlify-ratelimit-original-url` header. Released as 1.1.6. A first attempt in 1.1.4 used `context.url`, which the smoke test showed is the internal path too. A temporary diagnostic in 1.1.5 logged the names of the headers Netlify passes, which found the header. |
+| The reference had no tutorials or task-based guides | A tutorial and four how-to guides on marlasowards.com, with tested JavaScript and Python. Linked from the spec in 1.1.5. |
+| In a browser, a `304` from the CDN has no CORS headers, so code that sets `If-None-Match` itself gets a network error | Documented as a known limitation in 1.1.6 (see below). |
+| Preflights allow only `If-None-Match`, but the docs said any website can call the API without mentioning that limit | Documented in 1.1.6. |
+
+### Known limitation: CDN `304`s without CORS headers
+
+Netlify's CDN answers a matching `If-None-Match` itself, from its cached copy, and that `304` leaves out `Access-Control-Allow-Origin`. Browsers' own revalidation isn't affected, because the browser applies the `304` to a cached response that has the header. Only browser code that sends `If-None-Match` itself fails, and it fails closed: the browser blocks the response, and nothing is exposed.
+
+Two fixes were considered and not taken:
+
+- An edge function that adds CORS headers to every response, including the CDN's `304`s. It would add a moving part to every request, for a problem the docs can steer clients around.
+- Turning off the long CDN cache, so the function answers every request. That would reverse the caching decision in the [API developer review](#api-developer-review).
+
 ## Choices that stayed
 
 - **No database.** The data is a JavaScript module, so responses are deterministic, the contract test can compare examples exactly, and there's nothing to provision.
-- **Same-origin API.** The function is served from the site's own domain, so the reference page never hits CORS problems. CORS is still open for other callers.
-- **Docs live in the spec.** The conceptual docs are in `info.description` rather than a separate guide, so the reference page is the one place a developer needs.
+- **Open CORS.** The API has always allowed every origin. Since it moved to its own domain, the reference page on `www.marlasowards.com` relies on that too. The data is public and the API takes no credentials, so `*` is safe.
+- **Reference docs live in the spec.** The conceptual docs are in `info.description`, so the reference page is the one place a developer needs to learn how the API works. Tutorials and how-to guides need room for step-by-step code in two languages, so they're separate pages on marlasowards.com, linked from the spec.
 - **Facts aren't individually sourced.** Adding citations would mean inventing or researching sources for each one. The About the data section says so plainly instead.

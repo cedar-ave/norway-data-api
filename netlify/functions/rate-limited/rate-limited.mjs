@@ -13,48 +13,42 @@ import { log, problemResponse, ProblemError } from '../norway-data/norway-data.m
 // The rate limit's window, in seconds. Waiting this long always clears it.
 export const RETRY_AFTER_SECONDS = 60;
 
-// The URL the client requested. After the rewrite, req.url is /_rate-limited,
-// which would make the problem's instance a path the client never asked for.
-// context.url should still be the original URL. Netlify doesn't document
-// this, so the smoke test checks it in production. If context.url is missing
-// or is the same as req.url, this falls back to req.url.
-function requestedUrl(req, context) {
+// After the rewrite, req.url is /_rate-limited, a path the client never
+// requested, so a problem's instance would be wrong. Netlify passes the
+// original URL in this header instead. It isn't documented (it was found by
+// logging the header names this function receives), so the smoke test
+// checks it in production.
+const ORIGINAL_URL_HEADER = 'netlify-ratelimit-original-url';
+
+// The URL the client requested. A direct request to /_rate-limited can set
+// the header itself, but that only changes instance in its own uncached
+// response. Only the path and query are used, on this request's origin.
+// Without a usable header, this falls back to req.url.
+function requestedUrl(req) {
   const url = new URL(req.url);
-  if (!context?.url) return url;
-  const original = new URL(context.url);
-  return original.pathname === url.pathname ? url : original;
+  const original = req.headers.get(ORIGINAL_URL_HEADER);
+  if (!original) return url;
+  try {
+    const { pathname, search } = new URL(original, url);
+    return new URL(pathname + search, url);
+  } catch {
+    return url;
+  }
 }
 
 export default async (req, context) => {
   const started = Date.now();
   const requestId = context?.requestId ?? req.headers.get('x-nf-request-id') ?? crypto.randomUUID();
   // problemResponse and log only read url and method.
-  const requested = { url: requestedUrl(req, context).href, method: req.method };
+  const requested = { url: requestedUrl(req).href, method: req.method };
   const res = problemResponse(
     new ProblemError('rate-limited', `Too many requests from your IP address. Wait ${RETRY_AFTER_SECONDS} seconds, then retry.`),
     requested,
     requestId,
     { 'Retry-After': String(RETRY_AFTER_SECONDS) },
   );
-  logRewriteDiagnostic(req, context, requestId);
   return log(requested, res, requestId, started);
 };
-
-// TEMPORARY (1.1.5): context.url turned out to be /_rate-limited too, so
-// this logs what else Netlify passes after the rewrite, to find the original
-// path. It logs header names only, never values, like the rule for query
-// parameters in log(): a client can send any header, with anything in it.
-// Remove it once the question is answered. To read it, search the function
-// logs for "rate-limit-rewrite".
-const clip = (text, max) => (text.length > max ? `${text.slice(0, max)}…` : text);
-function logRewriteDiagnostic(req, context, requestId) {
-  console.log(JSON.stringify({
-    requestId,
-    diagnostic: 'rate-limit-rewrite',
-    contextUrlPath: context?.url ? clip(new URL(context.url).pathname, 128) : null,
-    headerNames: [...req.headers.keys()].sort(),
-  }));
-}
 
 // Must be literals - Netlify reads this at deploy time without running the code.
 export const config = {

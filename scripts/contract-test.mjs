@@ -311,19 +311,28 @@ for (const host of ['https://deploy-preview-1--norway-data-api.netlify.app', 'ht
 }
 
 // After Netlify's rewrite, the rate-limited function's req.url is
-// /_rate-limited, so the problem's instance must come from context.url, the
-// URL the client requested. The documented TooManyRequests example is the
-// exact response to a rate-limited GET /random-fact. A direct call to
-// /_rate-limited reports its own path.
+// /_rate-limited, so the problem's instance must come from the
+// netlify-ratelimit-original-url header, the URL the client requested. The
+// documented TooManyRequests example is the exact response to a rate-limited
+// GET /random-fact. Without a usable header, instance is the function's own
+// path.
 {
   const rewritten = `${serverUrl.origin}/_rate-limited`;
-  const res = await rateLimitedHandler(new Request(rewritten), { requestId: EXAMPLE_REQUEST_ID, url: new URL(`${serverUrl.origin}${v('/random-fact')}`) });
+  const rateLimited = (original) => rateLimitedHandler(
+    new Request(rewritten, { headers: original === undefined ? {} : { 'Netlify-Ratelimit-Original-Url': original } }),
+    { requestId: EXAMPLE_REQUEST_ID },
+  );
   const example = spec.components.responses.TooManyRequests.content['application/problem+json'].example;
+  const res = await rateLimited(`${serverUrl.origin}${v('/random-fact')}`);
   check(isDeepStrictEqual(await res.json(), example), 'rate-limited: the TooManyRequests example isn\'t the actual response to a rate-limited /random-fact');
-  const filtered = await rateLimitedHandler(new Request(rewritten), { url: new URL(`${serverUrl.origin}${v('/facts?category=nature')}`) });
+  const filtered = await rateLimited(`${serverUrl.origin}${v('/facts?category=nature')}`);
   check((await filtered.json()).instance === v('/facts?category=nature'), 'rate-limited: instance should include the requested query string');
-  const direct = await rateLimitedHandler(new Request(rewritten), { url: new URL(rewritten) });
-  check((await direct.json()).instance === '/_rate-limited', 'rate-limited: a direct call should report /_rate-limited');
+  const pathOnly = await rateLimited(v('/places'));
+  check((await pathOnly.json()).instance === v('/places'), 'rate-limited: a header with only a path should work too');
+  const direct = await rateLimited(undefined);
+  check((await direct.json()).instance === '/_rate-limited', 'rate-limited: without the header, instance should be /_rate-limited');
+  const garbage = await rateLimited('http://[');
+  check(garbage.status === 429 && (await garbage.json()).instance === '/_rate-limited', 'rate-limited: an unparseable header should fall back to /_rate-limited');
 }
 
 // The rate-limited function's 429 matches the documented TooManyRequests
