@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.7
+  version: 1.1.8
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -375,6 +375,7 @@ info:
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.8 | 12 October 2026 | Reference page only: endpoints and errors have several named examples, such as a filter with no matches, the last page, an `offset` past the end, an unknown place ID, and a repeated parameter. |
     | 1.1.7 | 12 October 2026 | Reference page only: what you can build with the API, a diagram of how facts, categories, and places relate, and a table of endpoints. |
     | 1.1.6 | 12 October 2026 | A rate-limited request's `429` response now has the requested path in `instance`, instead of an internal path. The reference page also says which request headers browsers can send, and why browser code shouldn't set `If-None-Match` itself. |
     | 1.1.5 | 12 October 2026 | Reference page only: links to a new tutorial and how-to guides. |
@@ -486,28 +487,82 @@ paths:
                       $ref: '#/components/schemas/Fact'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
-              x-example-request: /facts?category=culture&place=oslo&limit=2&offset=0
-              example:
-                data:
-                  - id: 15
-                    category: culture
-                    title: The Scream
-                    text: Edvard Munch, who painted The Scream, was Norwegian. The National Museum and the Munch museum in Oslo both hold versions of it.
-                    placeIds: [oslo]
-                  - id: 30
-                    category: culture
-                    title: The raft in Oslo
-                    text: The original Kon-Tiki raft is on display at the Kon-Tiki Museet on the Bygdøy peninsula in Oslo.
-                    placeIds: [kon-tiki-museet, oslo]
-                pagination:
-                  total: 2
-                  limit: 2
-                  offset: 0
-                  links:
-                    first: https://api.marlasowards.com/norway-data/v1/facts?category=culture&place=oslo&limit=2&offset=0
-                    prev: null
-                    next: null
-                    last: https://api.marlasowards.com/norway-data/v1/facts?category=culture&place=oslo&limit=2&offset=0
+              examples:
+                categoryAndPlace:
+                  summary: By category and place
+                  description: '`GET /facts?category=culture&place=oslo&limit=2&offset=0`. A fact must match both filters.'
+                  x-example-request: /facts?category=culture&place=oslo&limit=2&offset=0
+                  value:
+                    data:
+                      - id: 15
+                        category: culture
+                        title: The Scream
+                        text: Edvard Munch, who painted The Scream, was Norwegian. The National Museum and the Munch museum in Oslo both hold versions of it.
+                        placeIds: [oslo]
+                      - id: 30
+                        category: culture
+                        title: The raft in Oslo
+                        text: The original Kon-Tiki raft is on display at the Kon-Tiki Museet on the Bygdøy peninsula in Oslo.
+                        placeIds: [kon-tiki-museet, oslo]
+                    pagination:
+                      total: 2
+                      limit: 2
+                      offset: 0
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/facts?category=culture&place=oslo&limit=2&offset=0
+                        prev: null
+                        next: null
+                        last: https://api.marlasowards.com/norway-data/v1/facts?category=culture&place=oslo&limit=2&offset=0
+                noMatch:
+                  summary: No facts match
+                  description: '`GET /facts?category=nature&place=oslo`. No nature facts are about Oslo, so `data` is empty. This isn''t an error.'
+                  x-example-request: /facts?category=nature&place=oslo
+                  value:
+                    data: []
+                    pagination:
+                      total: 0
+                      limit: 10
+                      offset: 0
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/facts?category=nature&place=oslo&limit=10&offset=0
+                        prev: null
+                        next: null
+                        last: https://api.marlasowards.com/norway-data/v1/facts?category=nature&place=oslo&limit=10&offset=0
+                lastPage:
+                  summary: Last page
+                  description: '`GET /facts?limit=10&offset=30`. On the last page, `next` is `null`.'
+                  x-example-request: /facts?limit=10&offset=30
+                  value:
+                    data:
+                      - id: 31
+                        category: culture
+                        title: Kon-Tiki on screen
+                        text: Heyerdahl's documentary about the voyage, Kon-Tiki, won an Academy Award. A Norwegian feature film about the expedition, released in 2012, was nominated for one.
+                        placeIds: []
+                    pagination:
+                      total: 31
+                      limit: 10
+                      offset: 30
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/facts?limit=10&offset=0
+                        prev: https://api.marlasowards.com/norway-data/v1/facts?limit=10&offset=20
+                        next: null
+                        last: https://api.marlasowards.com/norway-data/v1/facts?limit=10&offset=30
+                offsetPastEnd:
+                  summary: Offset past the end
+                  description: '`GET /facts?limit=10&offset=100`. An `offset` past the last item returns an empty `data` array, not an error.'
+                  x-example-request: /facts?limit=10&offset=100
+                  value:
+                    data: []
+                    pagination:
+                      total: 31
+                      limit: 10
+                      offset: 100
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/facts?limit=10&offset=0
+                        prev: https://api.marlasowards.com/norway-data/v1/facts?limit=10&offset=90
+                        next: null
+                        last: https://api.marlasowards.com/norway-data/v1/facts?limit=10&offset=30
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -543,13 +598,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Fact'
-              x-example-request: /facts/3
-              example:
-                id: 3
-                category: geography
-                title: Highest peak in Northern Europe
-                text: Galdhøpiggen in Jotunheimen is 2,469 m tall, making it the highest mountain in Norway and in Northern Europe.
-                placeIds: [galdhopiggen, jotunheimen]
+              examples:
+                withPlaces:
+                  summary: A fact about places
+                  description: '`GET /facts/3`. To get each place''s name, call `/places/{id}` with an ID from `placeIds`.'
+                  x-example-request: /facts/3
+                  value:
+                    id: 3
+                    category: geography
+                    title: Highest peak in Northern Europe
+                    text: Galdhøpiggen in Jotunheimen is 2,469 m tall, making it the highest mountain in Norway and in Northern Europe.
+                    placeIds: [galdhopiggen, jotunheimen]
+                withoutPlaces:
+                  summary: A fact about no particular place
+                  description: '`GET /facts/10`. `placeIds` is an empty array, not missing.'
+                  x-example-request: /facts/10
+                  value:
+                    id: 10
+                    category: history
+                    title: First to the South Pole
+                    text: Roald Amundsen's expedition was the first to reach the South Pole, on 14 December 1911.
+                    placeIds: []
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -625,24 +694,46 @@ paths:
                       $ref: '#/components/schemas/Category'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
-              x-example-request: /categories?limit=2
-              example:
-                data:
-                  - id: geography
-                    name: Geography
-                    description: Mountains, fjords, glaciers, lakes, and borders.
-                  - id: history
-                    name: History
-                    description: Independence, the constitution, exploration, and politics.
-                pagination:
-                  total: 5
-                  limit: 2
-                  offset: 0
-                  links:
-                    first: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=0
-                    prev: null
-                    next: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=2
-                    last: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=4
+              examples:
+                firstPage:
+                  summary: First page
+                  description: '`GET /categories?limit=2`. To get the next page, follow `next`.'
+                  x-example-request: /categories?limit=2
+                  value:
+                    data:
+                      - id: geography
+                        name: Geography
+                        description: Mountains, fjords, glaciers, lakes, and borders.
+                      - id: history
+                        name: History
+                        description: Independence, the constitution, exploration, and politics.
+                    pagination:
+                      total: 5
+                      limit: 2
+                      offset: 0
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=0
+                        prev: null
+                        next: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=2
+                        last: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=4
+                lastPage:
+                  summary: Last page
+                  description: '`GET /categories?limit=2&offset=4`. On the last page, `next` is `null`.'
+                  x-example-request: /categories?limit=2&offset=4
+                  value:
+                    data:
+                      - id: economy
+                        name: Economy
+                        description: Energy, industry, and public finance.
+                    pagination:
+                      total: 5
+                      limit: 2
+                      offset: 4
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=0
+                        prev: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=2
+                        next: null
+                        last: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=4
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -683,26 +774,49 @@ paths:
                       $ref: '#/components/schemas/Place'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
-              x-example-request: /places?limit=2
-              example:
-                data:
-                  - id: dovrefjell
-                    name: Dovrefjell
-                    type: mountain-area
-                    description: Mountain range in central Norway, home to a herd of muskoxen.
-                  - id: eidsvoll
-                    name: Eidsvoll
-                    type: municipality
-                    description: Municipality north of Oslo where the constitution was signed in 1814.
-                pagination:
-                  total: 15
-                  limit: 2
-                  offset: 0
-                  links:
-                    first: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=0
-                    prev: null
-                    next: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=2
-                    last: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=14
+              examples:
+                firstPage:
+                  summary: First page
+                  description: '`GET /places?limit=2`. To get the next page, follow `next`.'
+                  x-example-request: /places?limit=2
+                  value:
+                    data:
+                      - id: dovrefjell
+                        name: Dovrefjell
+                        type: mountain-area
+                        description: Mountain range in central Norway, home to a herd of muskoxen.
+                      - id: eidsvoll
+                        name: Eidsvoll
+                        type: municipality
+                        description: Municipality north of Oslo where the constitution was signed in 1814.
+                    pagination:
+                      total: 15
+                      limit: 2
+                      offset: 0
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=0
+                        prev: null
+                        next: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=2
+                        last: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=14
+                lastPage:
+                  summary: Last page
+                  description: '`GET /places?limit=2&offset=14`. On the last page, `next` is `null`.'
+                  x-example-request: /places?limit=2&offset=14
+                  value:
+                    data:
+                      - id: svalbard
+                        name: Svalbard
+                        type: archipelago
+                        description: Arctic archipelago between mainland Norway and the North Pole.
+                    pagination:
+                      total: 15
+                      limit: 2
+                      offset: 14
+                      links:
+                        first: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=0
+                        prev: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=12
+                        next: null
+                        last: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=14
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -1019,31 +1133,103 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
-          x-example-request: /facts?category=food
-          example:
-            type: tag:marlasowards.com,2026:norway-data/invalid-parameter
-            title: Invalid parameter
-            status: 400
-            detail: A query parameter is invalid. See errors for details.
-            instance: /norway-data/v1/facts?category=food
-            requestId: 01JEXAMPLE0REQUEST0ID00000
-            errors:
-              - parameter: category
-                detail: 'Must be one of: geography, history, culture, nature, economy.'
+          examples:
+            valueNotAllowed:
+              summary: Value not allowed
+              description: '`GET /facts?category=food`. `errors` lists the allowed values.'
+              x-example-request: /facts?category=food
+              value:
+                type: tag:marlasowards.com,2026:norway-data/invalid-parameter
+                title: Invalid parameter
+                status: 400
+                detail: A query parameter is invalid. See errors for details.
+                instance: /norway-data/v1/facts?category=food
+                requestId: 01JEXAMPLE0REQUEST0ID00000
+                errors:
+                  - parameter: category
+                    detail: 'Must be one of: geography, history, culture, nature, economy.'
+            unknownPlace:
+              summary: Unknown place ID
+              description: '`GET /facts?place=geirangerfjord`. A `place` that isn''t a place ID is an error, not an empty list.'
+              x-example-request: /facts?place=geirangerfjord
+              value:
+                type: tag:marlasowards.com,2026:norway-data/invalid-parameter
+                title: Invalid parameter
+                status: 400
+                detail: A query parameter is invalid. See errors for details.
+                instance: /norway-data/v1/facts?place=geirangerfjord
+                requestId: 01JEXAMPLE0REQUEST0ID00000
+                errors:
+                  - parameter: place
+                    detail: No place has this ID. Get place IDs from /places.
+            repeatedParameter:
+              summary: Parameter given twice
+              description: '`GET /facts?category=history&category=nature`. To match more than one category, make one request per category.'
+              x-example-request: /facts?category=history&category=nature
+              value:
+                type: tag:marlasowards.com,2026:norway-data/invalid-parameter
+                title: Invalid parameter
+                status: 400
+                detail: A query parameter is invalid. See errors for details.
+                instance: /norway-data/v1/facts?category=history&category=nature
+                requestId: 01JEXAMPLE0REQUEST0ID00000
+                errors:
+                  - parameter: category
+                    detail: Specify this parameter only once.
+            leadingZeros:
+              summary: ID with leading zeros
+              description: '`GET /facts/010`. Each resource has one URL. Use `/facts/10`.'
+              x-example-request: /facts/010
+              value:
+                type: tag:marlasowards.com,2026:norway-data/invalid-parameter
+                title: Invalid parameter
+                status: 400
+                detail: The id path parameter is invalid.
+                instance: /norway-data/v1/facts/010
+                requestId: 01JEXAMPLE0REQUEST0ID00000
+                errors:
+                  - parameter: id
+                    detail: Must be a positive integer with no leading zeros.
+            invalidPath:
+              summary: Invalid percent-encoding
+              description: '`GET /facts/%E0`. The path can''t be decoded, so the error has no `errors` array.'
+              x-example-request: /facts/%E0
+              value:
+                type: tag:marlasowards.com,2026:norway-data/invalid-path
+                title: Invalid path
+                status: 400
+                detail: The request path contains malformed percent-encoding.
+                instance: /norway-data/v1/facts/%E0
+                requestId: 01JEXAMPLE0REQUEST0ID00000
     NotFound:
       description: No resource has that ID. See [Errors](#description/errors).
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
-          x-example-request: /facts/99
-          example:
-            type: tag:marlasowards.com,2026:norway-data/not-found
-            title: Not found
-            status: 404
-            detail: No fact has the ID 99.
-            instance: /norway-data/v1/facts/99
-            requestId: 01JEXAMPLE0REQUEST0ID00000
+          examples:
+            factNotFound:
+              summary: No fact with that ID
+              description: '`GET /facts/99`.'
+              x-example-request: /facts/99
+              value:
+                type: tag:marlasowards.com,2026:norway-data/not-found
+                title: Not found
+                status: 404
+                detail: No fact has the ID 99.
+                instance: /norway-data/v1/facts/99
+                requestId: 01JEXAMPLE0REQUEST0ID00000
+            placeNotFound:
+              summary: No place with that ID
+              description: '`GET /places/bergen`. To get place IDs, call `/places`.'
+              x-example-request: /places/bergen
+              value:
+                type: tag:marlasowards.com,2026:norway-data/not-found
+                title: Not found
+                status: 404
+                detail: No place has the ID bergen.
+                instance: /norway-data/v1/places/bergen
+                requestId: 01JEXAMPLE0REQUEST0ID00000
     TooManyRequests:
       description: Too many requests from your IP address. See [Rate limits](#description/rate-limits).
       headers:

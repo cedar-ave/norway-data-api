@@ -37,14 +37,14 @@ This repo deploys to its own Netlify site, whose primary domain is `api.marlasow
 
 ## Docs
 
-- [The Netlify Functions](docs/function.md): routing, validation, pagination, caching, rate limiting, errors, logging, and headers
-- [The OpenAPI spec](docs/spec.md): layout, conventions, the introduction, and how examples are tied to real responses
-- [The contract test](docs/contract-test.md): what it checks and how, plus the smoke test and version check
-- [Maintaining the API](docs/maintenance.md): adding facts, places, categories, and endpoints, releasing, and troubleshooting
-- [Security](docs/security.md): the threat model, every control, accepted risks, and settings that live outside the code
-- [Design decisions](docs/design-decisions.md): how the API got its current shape, and why
+The docs for working on this API are in the [Norway Data API section](https://www.marlasowards.com/docs/category/norway-data-api) of the marlasowards.com docs. Their source is `docs/norway-data-api/` in [cedar-ave/portfolio](https://github.com/cedar-ave/portfolio).
 
-These pages are mirrored, as MDX, in the [Norway Data API section](https://www.marlasowards.com/docs/category/norway-data-api) of the marlasowards.com docs (source: `docs/norway-data-api/` in [cedar-ave/portfolio](https://github.com/cedar-ave/portfolio)). This repo is the source of truth: when you change a doc here, update its mirror there.
+- [The Netlify Functions](https://www.marlasowards.com/docs/norway-data-api/functions/): routing, validation, pagination, caching, rate limiting, errors, logging, and headers
+- [The OpenAPI spec](https://www.marlasowards.com/docs/norway-data-api/openapi-spec/): layout, conventions, the introduction, and how examples are tied to real responses
+- [The contract test](https://www.marlasowards.com/docs/norway-data-api/contract-test/): what it checks and how, plus the smoke test and version check
+- [Maintaining the API](https://www.marlasowards.com/docs/norway-data-api/maintenance/): adding facts, places, categories, and endpoints, releasing, and troubleshooting
+- [Security](https://www.marlasowards.com/docs/norway-data-api/api-security/): the threat model, every control, accepted risks, and settings that live outside the code
+- [Design decisions](https://www.marlasowards.com/docs/norway-data-api/design-decisions/): how the API got its current shape, and why
 
 ## Develop
 

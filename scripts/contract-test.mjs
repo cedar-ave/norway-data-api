@@ -5,8 +5,9 @@
 // checks that:
 // - every documented status code is exercised
 // - every example in the spec matches its schema, and every example with a
-//   known request (x-example-request, or a curl block right before a json
-//   block in the introduction) is the exact response to that request
+//   known request (x-example-request on an example or a named example, or a
+//   curl block right before a json block in the introduction) is the exact
+//   response to that request
 // - every error type the API returns is listed in the Errors section
 // - pagination links walk each whole collection
 // - the dataset's cross-references (category and place IDs) resolve
@@ -382,28 +383,44 @@ for (const [template, item] of Object.entries(spec.paths)) {
   }
 }
 
+// A media type has either one `example`, with its `x-example-request` next
+// to it, or named `examples`, each with its own `x-example-request`.
+function examplesOf(media) {
+  if (media.examples) {
+    return Object.entries(media.examples).map(([name, ex]) => ({ label: ` "${name}"`, value: ex.value, path: ex['x-example-request'] }));
+  }
+  return media.example === undefined ? [] : [{ label: '', value: media.example, path: media['x-example-request'] }];
+}
+
 // Every example in the spec must match its schema, so the docs can't show
 // a response the API would never send.
 for (const [template, item] of Object.entries(spec.paths)) {
   for (const [status, ref] of Object.entries(item.get.responses)) {
     for (const media of Object.values(resolve(ref).content ?? {})) {
-      if (media.example === undefined) continue;
+      check(media.example === undefined || !media.examples, `GET ${template} ${status} has both example and examples`);
       const validate = validatorFor(media.schema);
-      if (!validate(media.example)) failures.push(`spec example for GET ${template} ${status} is invalid: ${ajv.errorsText(validate.errors)}`);
-      checks++;
+      for (const { label, value } of examplesOf(media)) {
+        if (!validate(value)) failures.push(`spec example${label} for GET ${template} ${status} is invalid: ${ajv.errorsText(validate.errors)}`);
+        checks++;
+      }
     }
   }
 }
 
 // Examples tied to a request must be that request's exact response, so the
-// docs can't drift from the data.
+// docs can't drift from the data. Shared responses appear under several
+// operations, so each example is compared once.
+const comparedExamples = new Set();
 for (const [template, item] of Object.entries(spec.paths)) {
   for (const [status, ref] of Object.entries(item.get.responses)) {
     for (const media of Object.values(resolve(ref).content ?? {})) {
-      const path = media['x-example-request'];
-      if (!path) continue;
-      const { text } = await call(v(path === '/' ? '' : path));
-      check(isDeepStrictEqual(JSON.parse(text), media.example), `example for GET ${template} ${status} isn't the actual response to ${path}`);
+      for (const { label, value, path } of examplesOf(media)) {
+        if (!path || comparedExamples.has(value)) continue;
+        comparedExamples.add(value);
+        const { res, text } = await call(v(path === '/' ? '' : path));
+        check(String(res.status) === status, `example${label} for GET ${template} ${status}: ${path} returns ${res.status}`);
+        check(isDeepStrictEqual(JSON.parse(text), value), `example${label} for GET ${template} ${status} isn't the actual response to ${path}`);
+      }
     }
   }
 }

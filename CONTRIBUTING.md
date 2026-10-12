@@ -18,4 +18,4 @@ If you change anything in `netlify/functions/` or the spec:
 - Bump `info.version` in the spec and `version` in `package.json` (patch for fixes and data, minor for new features).
 - Add a row to the changelog in the spec's introduction.
 
-CI checks all of this. See [docs/maintenance.md](docs/maintenance.md) for how to make common changes.
+CI checks all of this. See [Maintaining the API](https://www.marlasowards.com/docs/norway-data-api/maintenance/) for how to make common changes.
