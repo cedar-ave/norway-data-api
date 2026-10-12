@@ -27,6 +27,7 @@
 - **Values that can gain new options are open strings.** `CategoryId` and a place's `type` are `type: string` with the current values in the description, not an `enum`. Code generators turn an `enum` into a closed type that would reject a value added later, which would contradict the docs' promise that new values can appear within `v1`. The `category` query parameter is still an `enum`, since it's input the API validates.
 - **Schemas use `examples` (an array), not `example`.** `example` inside a schema is deprecated in OpenAPI 3.1. Parameter and media type objects still use `example`, which isn't deprecated there.
 - **Descriptions link to the introduction instead of repeating it.** For example, the `Limit` parameter says `See [Pagination](#description/pagination).` rather than restating the pagination rules. Each rule has one home, so they can't drift apart.
+- **Parameter examples must work together.** The reference page's **Test Request** fills in every parameter's example at once, so each operation's examples have to make a request that succeeds and, for a collection, returns items. `category=history`, `place=svalbard`, and `offset=2` were each valid alone but together matched nothing. The contract test now calls every operation with all of its examples and fails if a collection comes back empty.
 - **Shared responses are components.** `BadRequest`, `NotFound`, `NotModified`, `TooManyRequests`, and `InternalError` are defined once and referenced by each operation.
 
 ## The introduction

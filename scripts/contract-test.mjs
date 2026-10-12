@@ -329,6 +329,25 @@ for (const host of ['https://deploy-preview-1--norway-data-api.netlify.app', 'ht
   check(body.detail.includes(`${retryAfter} seconds`), 'rate-limited: detail and Retry-After disagree');
 }
 
+// The reference page's Test Request fills in every parameter's example at
+// once, so each operation's examples must work together: the request they
+// make must succeed and, for a collection, return at least one item.
+// (Each example was once valid alone, but category=history&place=svalbard
+// &offset=2 matched nothing.)
+for (const [template, item] of Object.entries(spec.paths)) {
+  const params = (item.get.parameters ?? []).map(resolve);
+  let path = template;
+  const query = new URLSearchParams();
+  for (const p of params) {
+    check(p.example !== undefined, `GET ${template}: parameter ${p.name} has no example`);
+    if (p.in === 'path') path = path.replace(`{${p.name}}`, encodeURIComponent(p.example));
+    else query.set(p.name, String(p.example));
+  }
+  const qs = query.toString();
+  const body = await request(v((path === '/' ? '' : path) + (qs ? `?${qs}` : '')), 200);
+  if (Array.isArray(body?.data)) check(body.data.length > 0, `GET ${template} with every parameter example (${qs}) returns no items`);
+}
+
 // ---- Coverage and spec self-checks -----------------------------------------
 
 for (const [template, item] of Object.entries(spec.paths)) {
