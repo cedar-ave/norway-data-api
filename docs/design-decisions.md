@@ -109,7 +109,7 @@ A security review the same day found two exploitable problems in production, bot
 
 ## Docs and browser review
 
-A fourth review, on 12 October 2026, measured the docs against common API documentation practice and tested the API from a real browser. It also added a tutorial and how-to guides on marlasowards.com.
+A fifth review, on 12 October 2026, measured the docs against common API documentation practice and tested the API from a real browser. It also added a tutorial and how-to guides on marlasowards.com.
 
 | Finding | Change |
 | --- | --- |
