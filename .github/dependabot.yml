@@ -1,0 +1,13 @@
+# Weekly update pull requests for npm packages and GitHub Actions. Actions
+# are pinned to commit SHAs; Dependabot updates the SHA and the version
+# comment together.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -66,7 +66,31 @@ Because "Norway Data" could sound like an official government source, the About 
 
 The API started inside the repo for marlasowards.com, next to the site that hosts its reference page. It moved to this repo so the API, its spec, its tests, and its CI form one standalone project, and so issue links on the reference page point at the API rather than at a portfolio site.
 
-The public URLs didn't change. marlasowards.com proxies `/api/norway-data/*` and `/openapi/norway-data.yaml` to this repo's Netlify site, and the reference page stays on marlasowards.com.
+At first, the public URLs didn't change: marlasowards.com proxied `/api/norway-data/*` and `/openapi/norway-data.yaml` to this repo's Netlify site, and the reference page stayed on marlasowards.com. The proxy was later replaced by a custom domain (see [Production readiness review](#production-readiness-review)).
+
+## Production readiness review
+
+A third review looked at how the API is deployed, verified, and protected. Two of its findings were bugs that only existed in production, and both came from the proxy that served the API from `www.marlasowards.com`.
+
+| Finding | Change |
+| --- | --- |
+| Requests through the proxy skipped the rate limit entirely: 70 quick requests all returned `200`, while the same burst sent directly to the API's site got a `429` | Moved the API to its own domain, `api.marlasowards.com`, with no proxy. The old URLs redirect (`301`) to the new ones. Released as 1.1.0. |
+| Behind the proxy, the function saw its `netlify.app` host, so pagination and index links pointed there. A workaround hardcoded both hostnames into the function. | With no proxy, links use the request's own origin. No hostnames are hardcoded except the reference page's URL, which an environment variable can override. |
+| Every request made an extra network hop through the proxy | Removed with the proxy. |
+| A failing contract test didn't stop a deploy | Netlify's build command runs the lint and contract test. |
+| Nothing tested the deployed API, and Netlify config errors only showed up in a deploy | A smoke test runs after each deploy and every hour, and CI bundles the functions with Netlify's bundler. |
+| Strict parameters rejected `utm_*` tracking parameters and `_` cache-busters | Those two are ignored. Everything else stays strict. |
+| Hostnames were spread across five files in two repos | One `DOCS_URL` constant; everything else comes from the request. |
+| Actions pinned to tags, a floating `netlify-cli` version, no Dependabot, no `SECURITY.md` | Actions pinned to commit SHAs, exact tool versions, Dependabot for npm and Actions, a security policy, issue templates, and `CODEOWNERS`. |
+| No request logging or uptime check | A JSON log line per request (no personal data), and the hourly smoke test as an uptime alert. |
+| The changelog missed two client-visible changes | Back-filled as 1.0.1. CI now fails if the API changes without a new version and changelog row. |
+| Netlify's `429` had an empty body and no `Retry-After` | The rate limit rewrites to a function that returns a problem details `429` with `Retry-After`. |
+| A malformed path returned `404` | Now `400`, with its own `invalid-path` type. |
+| Strong `ETag`s didn't change with compression | Weak `ETag`s. |
+| The `Accept` header was ignored without saying so | Documented. |
+| `/norway-data` returned the v1 index, which would be ambiguous once a v2 exists | It redirects to the current major version. |
+
+Agent-focused changes from the same review, such as an MCP server, `llms.txt`, compact responses, sources on each fact, search, and a higher rate limit, were deliberately left for later.
 
 ## Choices that stayed
 

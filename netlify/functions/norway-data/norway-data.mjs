@@ -1,7 +1,8 @@
-// Netlify Function that serves the Norway Data API. The reference page at
-// https://www.marlasowards.com/api-reference renders public/openapi/norway-data.yaml
-// and sends its "Test Request" calls here (through a proxy on that site),
-// and its generated code samples point here too.
+// Netlify Function that serves the Norway Data API at
+// https://api.marlasowards.com/norway-data. The reference page at
+// https://www.marlasowards.com/api-reference renders
+// public/openapi/norway-data.yaml (served by this same site) and sends its
+// "Test Request" calls here, and its generated code samples point here too.
 //
 // The spec is the contract. scripts/contract-test.mjs calls every route
 // through this handler and fails CI if a response, status code, or header
@@ -11,24 +12,26 @@
 import { createHash } from 'node:crypto';
 import { categories, facts, places } from './data.mjs';
 
-const ROOT_PATH = '/api/norway-data';
+const ROOT_PATH = '/norway-data';
 const VERSION = 'v1';
 const BASE_PATH = `${ROOT_PATH}/${VERSION}`;
-const SITE = 'https://www.marlasowards.com';
-const DOCS_URL = `${SITE}/api-reference`;
-const SPEC_URL = `${SITE}/openapi/norway-data.yaml`;
+const SPEC_PATH = '/openapi/norway-data.yaml';
+// The one URL that lives somewhere else: the reference page. Override it
+// with the DOCS_URL environment variable in Netlify if it ever moves.
+const DOCS_URL = process.env.DOCS_URL || 'https://www.marlasowards.com/api-reference';
 
-// Public requests reach this function through a proxy on SITE, so they
-// arrive with this site's own host. Links in responses must use the public
-// origin instead, or clients would be sent to the netlify.app domain. Any
-// other host (localhost, a deploy preview) keeps its own origin, so links
-// stay on the server that was called.
-const API_SITE_HOST = 'norway-data-api.netlify.app';
-const publicOrigin = (url) => (url.host === API_SITE_HOST ? SITE : url.origin);
+// Every other URL in a response is built from the request's own origin, so
+// links always point at the server that was called: production, a deploy
+// preview, or localhost.
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 const MAX_OFFSET = 10000;
+
+// Query parameters that are ignored instead of rejected: campaign tracking
+// parameters (utm_source and so on) that links pick up when shared, and the
+// `_` cache-buster some HTTP clients add.
+const IGNORED_PARAM = /^(utm_[a-z]+|_)$/;
 
 // Data only changes when the site deploys, and every deploy purges
 // Netlify's CDN cache. So the CDN may keep responses indefinitely, while
@@ -44,7 +47,7 @@ const UNCACHEABLE = { 'Cache-Control': 'no-store' };
 // localhost.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Expose-Headers': 'ETag, Link',
+  'Access-Control-Expose-Headers': 'ETag, Link, Retry-After',
 };
 const ALLOWED_METHODS = 'GET, HEAD, OPTIONS';
 
@@ -52,14 +55,16 @@ const ALLOWED_METHODS = 'GET, HEAD, OPTIONS';
 // it's a tag URI (RFC 4151) that doesn't depend on any page's headings or
 // URL - renaming docs can't change it. The spec's Errors section lists them.
 const PROBLEM_TYPE_PREFIX = 'tag:marlasowards.com,2026:norway-data/';
-const PROBLEMS = {
+export const PROBLEMS = {
   'invalid-parameter': { status: 400, title: 'Invalid parameter' },
+  'invalid-path': { status: 400, title: 'Invalid path' },
   'not-found': { status: 404, title: 'Not found' },
   'method-not-allowed': { status: 405, title: 'Method not allowed' },
+  'rate-limited': { status: 429, title: 'Too many requests' },
   'internal-error': { status: 500, title: 'Internal error' },
 };
 
-class ProblemError extends Error {
+export class ProblemError extends Error {
   constructor(slug, detail, extensions = {}) {
     super(detail);
     this.slug = slug;
@@ -77,7 +82,7 @@ const baseHeaders = (contentType) => ({
   ...CORS_HEADERS,
 });
 
-function problemResponse(err, req, requestId) {
+export function problemResponse(err, req, requestId, extraHeaders = {}) {
   const { status, title } = PROBLEMS[err.slug];
   const url = new URL(req.url);
   const body = {
@@ -89,22 +94,25 @@ function problemResponse(err, req, requestId) {
     requestId,
     ...err.extensions,
   };
-  const headers = { ...baseHeaders('application/problem+json'), ...UNCACHEABLE };
+  const headers = { ...baseHeaders('application/problem+json'), ...UNCACHEABLE, ...extraHeaders };
   if (status === 405) headers.Allow = ALLOWED_METHODS;
   return new Response(serialize(body), { status, headers });
 }
 
 // Sends a 200 with an ETag, or a 304 when the client already has this
-// exact representation.
+// representation. The ETag is weak (W/) because Netlify compresses
+// responses, and a strong ETag would have to differ for each compression.
 function jsonResponse(req, body, { cacheable = true, extraHeaders = {} } = {}) {
   const text = serialize(body);
   const headers = { ...baseHeaders('application/json'), ...extraHeaders };
   if (!cacheable) return new Response(text, { status: 200, headers: { ...headers, ...UNCACHEABLE } });
 
-  const etag = `"${createHash('sha256').update(text).digest('base64url').slice(0, 27)}"`;
+  const etag = `W/"${createHash('sha256').update(text).digest('base64url').slice(0, 27)}"`;
   Object.assign(headers, CACHEABLE, { ETag: etag });
   const ifNoneMatch = req.headers.get('If-None-Match');
-  if (ifNoneMatch && ifNoneMatch.split(',').some((tag) => tag.trim().replace(/^W\//, '') === etag || tag.trim() === '*')) {
+  // If-None-Match uses weak comparison: W/"x" and "x" match.
+  const opaque = (tag) => tag.trim().replace(/^W\//, '');
+  if (ifNoneMatch && ifNoneMatch.split(',').some((tag) => tag.trim() === '*' || opaque(tag) === opaque(etag))) {
     delete headers['Content-Type'];
     return new Response(null, { status: 304, headers });
   }
@@ -114,12 +122,12 @@ function jsonResponse(req, body, { cacheable = true, extraHeaders = {} } = {}) {
 // ---- Query parameters ------------------------------------------------------
 
 // Validates the query string against the parameters an endpoint accepts.
-// Unknown, repeated, and invalid parameters are all rejected, and every
-// problem is reported at once in `errors`.
+// Unknown, repeated, and invalid parameters are all rejected (except the
+// IGNORED_PARAM ones), and every problem is reported at once in `errors`.
 function parseQuery(searchParams, spec) {
   const errors = [];
   const values = {};
-  const names = [...new Set(searchParams.keys())];
+  const names = [...new Set(searchParams.keys())].filter((name) => !IGNORED_PARAM.test(name));
 
   for (const name of names) {
     if (!(name in spec)) {
@@ -172,16 +180,17 @@ function invalidPathParameter(name, detail) {
 
 // Every collection is paginated the same way, even short ones, so clients
 // need only one code path and a list can grow without a breaking change.
-// Page links use publicOrigin(), so they point at the URL the client called.
+// Page links keep the request's filters but drop ignored parameters.
 function paginate(req, items, query) {
   const { limit, offset } = query;
   const total = items.length;
   const url = new URL(req.url);
+  for (const name of [...url.searchParams.keys()]) if (IGNORED_PARAM.test(name)) url.searchParams.delete(name);
   const pageUrl = (newOffset) => {
     const next = new URL(url);
     next.searchParams.set('limit', String(limit));
     next.searchParams.set('offset', String(newOffset));
-    return `${publicOrigin(url)}${next.pathname}${next.search}`;
+    return next.href;
   };
 
   const lastOffset = total === 0 ? 0 : Math.floor((total - 1) / limit) * limit;
@@ -206,14 +215,13 @@ function paginate(req, items, query) {
 // ---- Routes ----------------------------------------------------------------
 
 function index(req) {
-  const url = new URL(req.url);
-  const origin = publicOrigin(url);
-  parseQuery(url.searchParams, {});
+  const { origin, searchParams } = new URL(req.url);
+  parseQuery(searchParams, {});
   return jsonResponse(req, {
     name: 'Norway Data API',
     version: VERSION,
     documentation: DOCS_URL,
-    openapi: SPEC_URL,
+    openapi: `${origin}${SPEC_PATH}`,
     links: {
       facts: `${origin}${BASE_PATH}/facts`,
       randomFact: `${origin}${BASE_PATH}/random-fact`,
@@ -266,10 +274,21 @@ function getPlace(req, id) {
   return jsonResponse(req, place);
 }
 
+// The unversioned root redirects to the current major version, so a client
+// that starts there always lands on a version it can rely on.
+function currentVersion(req) {
+  const { origin } = new URL(req.url);
+  return new Response(null, {
+    status: 302,
+    headers: { Location: `${origin}${BASE_PATH}`, 'Cache-Control': 'no-store', ...CORS_HEADERS },
+  });
+}
+
 // Returns the handler for a path, or null when no endpoint matches.
 function route(pathname) {
   const trimmed = pathname.replace(/\/+$/, '');
-  if (trimmed === ROOT_PATH || trimmed === BASE_PATH) return index;
+  if (trimmed === ROOT_PATH) return currentVersion;
+  if (trimmed === BASE_PATH) return index;
   if (!trimmed.startsWith(`${BASE_PATH}/`)) return null;
 
   const segments = trimmed.slice(BASE_PATH.length + 1).split('/').map(decodeURIComponent);
@@ -290,8 +309,28 @@ function route(pathname) {
   }
 }
 
+// One structured log line per request, for Netlify's function logs. No IP
+// addresses or other personal data.
+export function log(req, res, requestId, started) {
+  const url = new URL(req.url);
+  console.log(JSON.stringify({
+    requestId,
+    method: req.method,
+    path: url.pathname,
+    query: url.search,
+    status: res.status,
+    durationMs: Date.now() - started,
+  }));
+  return res;
+}
+
 export default async (req, context) => {
+  const started = Date.now();
   const requestId = context?.requestId ?? req.headers.get('x-nf-request-id') ?? crypto.randomUUID();
+  return log(req, handle(req, requestId), requestId, started);
+};
+
+function handle(req, requestId) {
   try {
     const url = new URL(req.url);
     let handler;
@@ -299,7 +338,7 @@ export default async (req, context) => {
       handler = route(url.pathname);
     } catch (err) {
       // decodeURIComponent throws on malformed percent-encoding (/facts/%E0).
-      if (err instanceof URIError) throw new ProblemError('not-found', 'The request path contains malformed percent-encoding.');
+      if (err instanceof URIError) throw new ProblemError('invalid-path', 'The request path contains malformed percent-encoding.');
       throw err;
     }
     if (!handler) throw new ProblemError('not-found', `No endpoint matches ${url.pathname}.`);
@@ -328,17 +367,21 @@ export default async (req, context) => {
     console.error(`[${requestId}]`, err);
     return problemResponse(new ProblemError('internal-error', 'The server hit an unexpected error. Try again later.'), req, requestId);
   }
-};
+}
 
 // Netlify reads this statically at deploy time, so every value must be a
 // literal - not ROOT_PATH or a template string. Keep them in sync by hand.
 //
-// rateLimit: Netlify answers with its own 429 once one IP address sends
-// more than 60 requests to one hostname within a sliding 60-second window.
-// The spec's Rate limits section describes this - update both together.
+// rateLimit: once one IP address sends more than 60 requests to one
+// hostname within a sliding 60-second window, Netlify rewrites the request
+// to /_rate-limited (netlify/functions/rate-limited/), which answers with a
+// problem details 429. The spec's Rate limits section describes this -
+// update both together.
 export const config = {
-  path: ['/api/norway-data', '/api/norway-data/*'],
+  path: ['/norway-data', '/norway-data/*'],
   rateLimit: {
+    action: 'rewrite',
+    to: '/_rate-limited',
     windowLimit: 60,
     windowSize: 60,
     aggregateBy: ['ip', 'domain'],

@@ -34,15 +34,19 @@ The test makes requests that cover each rule in the docs:
 - Filters (`category`, `place`, and both together) return only matching items.
 - Invalid IDs (`abc`, `010`, `0`, `-1`, `1.5`, `Sognefjord`, `-oslo`) return `400`. Unknown IDs return `404`.
 - Unknown, repeated, and out-of-range parameters return `400`, and several invalid parameters produce one error each.
-- Unknown paths, invalid percent-encoding, and `/v2/...` return `404`. `POST` and `DELETE` return `405`.
-- For every cacheable endpoint, sending the response's `ETag` back in `If-None-Match` returns `304`, and a stale `ETag` returns `200`.
+- Unknown paths, `/v2/...`, and the old `/api/norway-data/...` paths return `404`. Invalid percent-encoding returns `400`. `POST` and `DELETE` return `405`.
+- `/norway-data` redirects (`302`) to `/norway-data/v1`.
+- `utm_*` and `_` parameters are ignored and left out of pagination links, but a parameter that only looks similar, such as `utmx`, is still rejected.
+- For every cacheable endpoint, the `ETag` is weak, sending it back in `If-None-Match` (in weak or strong form) returns `304`, and a stale `ETag` returns `200`.
 - `/random-fact` sends no `ETag`.
 - `HEAD` matches `GET` without a body, and `OPTIONS` answers preflight requests.
 - Following `pagination.links.next` from the first page visits every item in each collection exactly once.
+- Links in responses use the origin of the request, whatever host was called (checked for a deploy preview's host and `localhost`).
+- The `rate-limited` function's `429` matches the spec's `TooManyRequests` response: status, media type, `Retry-After`, body schema, and a documented error `type`.
 
 ### Coverage
 
-After the requests, the test checks that every status code documented for every operation came up at least once. `429` and `500` are excluded: Netlify's rate limiter sends `429`, and `500` only happens on an unexpected exception.
+After the requests, the test checks that every status code documented for every operation came up at least once. `429` and `500` are excluded: `429` comes from the separate `rate-limited` function, which is checked on its own, and `500` only happens on an unexpected exception.
 
 ### Examples
 
@@ -77,21 +81,30 @@ Its first runs also caught three real bugs: a path matcher that treated `/v2/fac
 
 ## CI
 
-```yaml
-api:
-  name: API (spec lint + contract test)
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v7
-    - uses: actions/setup-node@v7
-      with:
-        node-version: 22
-        cache: npm
-    - run: npm ci
-    - name: Lint the OpenAPI spec
-      run: npm run lint
-    - name: Run the contract test
-      run: npm test
-```
+`.github/workflows/ci.yml` runs on every push and pull request:
 
-Netlify deploys on every push no matter what CI reports. To make a failing contract test block publishing, merge to `main` through pull requests with this check required.
+1. `npm run lint`: the Redocly lint of the spec.
+2. `npm test`: this contract test.
+3. `npm run check:bundle`: bundles the functions with Netlify's own bundler, so a config error (such as a non-literal `config.path`) fails here instead of in a deploy.
+4. `npm run check:version`: if anything under `netlify/functions/` or the spec changed, the spec's `info.version` must be new, the changelog must have a row for it, and `package.json`'s version must match.
+
+Netlify's build command also runs the lint and this test, so a commit that fails them never deploys, whatever CI reports.
+
+## The smoke test
+
+The contract test calls the functions in memory, so it can't catch problems that only exist once deployed. `scripts/smoke-test.mjs` checks a deployed copy over the real network:
+
+- The unversioned root redirects to `/v1`.
+- The index and pagination links, the `Link` header, and the spec link all point at the host that was called.
+- CORS headers, `Cache-Control`, a weak `ETag`, and a `304` on revalidation.
+- An unknown fact returns a problem details `404` with a `requestId`.
+- The spec is served, with CORS.
+- `--rate-limit`: a burst of uncached requests gets a problem details `429` with `Retry-After`.
+- `--redirects`: the old `www.marlasowards.com` URLs and the `netlify.app` domain redirect (`301`) to `api.marlasowards.com`.
+
+`.github/workflows/smoke.yml` runs it:
+
+- **After each successful Netlify deploy**, against that deploy's URL, with `--rate-limit`. Netlify reports deploys to GitHub as deployments, which trigger the workflow.
+- **Every hour**, against production, with `--redirects`. This is the API's uptime check: when a scheduled workflow fails, GitHub emails the repo owner.
+
+Two bugs that reached production before the smoke test existed are exactly what it now checks: pagination links that pointed at the `netlify.app` host, and a rate limit that proxied requests skipped.

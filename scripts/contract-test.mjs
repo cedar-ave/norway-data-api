@@ -19,7 +19,11 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import yaml from 'js-yaml';
 import handler from '../netlify/functions/norway-data/norway-data.mjs';
+import rateLimitedHandler from '../netlify/functions/rate-limited/rate-limited.mjs';
 import { categories, facts, places } from '../netlify/functions/norway-data/data.mjs';
+
+console.log = () => {};
+const print = (...args) => process.stdout.write(`${args.join(' ')}\n`);
 
 const spec = yaml.load(readFileSync(new URL('../public/openapi/norway-data.yaml', import.meta.url), 'utf8'));
 const serverUrl = new URL(spec.servers[0].url);
@@ -29,8 +33,9 @@ const EXAMPLE_REQUEST_ID = '01JEXAMPLE0REQUEST0ID00000';
 // Error types listed in the Errors table of the introduction.
 const DOCUMENTED_TYPES = new Set(spec.info.description.match(/tag:[^`\s]+/g));
 
-// Statuses the handler can't produce on its own: Netlify's rate limiter
-// sends 429, and 500 only happens on an unexpected exception.
+// Statuses the main handler can't produce on its own: 429 comes from the
+// rate-limited function (checked separately below), and 500 only happens on
+// an unexpected exception.
 const NOT_EXERCISABLE = new Set(['429', '500']);
 // 405 applies to methods the spec doesn't describe, so no GET operation
 // documents it. It's covered in the spec's introduction instead.
@@ -66,12 +71,8 @@ function check(ok, message) {
   if (!ok) failures.push(message);
 }
 
-// The unversioned root is an alias for the v1 index.
-const ROOT_ALIAS = '/api/norway-data';
-
 function findOperation(pathname) {
   const trimmed = pathname.replace(/\/+$/, '');
-  if (trimmed === ROOT_ALIAS) return { template: '/', operation: spec.paths['/'].get };
   if (trimmed !== basePath && !trimmed.startsWith(`${basePath}/`)) return null;
   const rel = trimmed.slice(basePath.length) || '/';
   for (const [template, item] of Object.entries(spec.paths)) {
@@ -144,7 +145,12 @@ const v = (p) => `${basePath}${p}`;
 // Index (versioned and unversioned roots)
 await request(v(''), 200);
 await request(v('/'), 200);
-await request('/api/norway-data', 200);
+// The unversioned root redirects to the current version.
+{
+  const { res } = await call('/norway-data');
+  check(res.status === 302, `GET /norway-data: expected 302, got ${res.status}`);
+  check(res.headers.get('location') === `${serverUrl.origin}${basePath}`, `GET /norway-data redirects to ${res.headers.get('location')}`);
+}
 await request(v('/?verbose=1'), 400);
 
 // Facts
@@ -187,8 +193,18 @@ for (const bad of ['Sognefjord', 'sogne_fjord', '-oslo', 'oslo-']) await request
 // Unknown paths, malformed encoding, unsupported methods
 await request(v('/nope'), 404);
 await request(v('/facts/10/extra'), 404);
-await request(v('/facts/%E0'), 404);
-await request('/api/norway-data/v2/facts', 404);
+await request(v('/facts/%E0'), 400);
+await request('/norway-data/v2/facts', 404);
+await request('/api/norway-data/v1/facts', 404);
+
+// Tracking and cache-busting parameters are ignored, and dropped from links.
+{
+  const tracked = await request(v('/facts?category=history&utm_source=newsletter&utm_medium=email&_=1739000000'), 200);
+  const links = Object.values(tracked?.pagination.links ?? {}).filter(Boolean);
+  check(links.length > 0 && links.every((u) => !/utm_|[?&]_=/.test(u)), 'pagination links kept ignored parameters');
+  await request(v('/facts/10?utm_campaign=launch'), 200);
+  await request(v('/facts?utmx=1'), 400);
+}
 await request(v('/facts'), 405, { method: 'POST' });
 await request(v('/facts/10'), 405, { method: 'DELETE' });
 
@@ -196,7 +212,9 @@ await request(v('/facts/10'), 405, { method: 'DELETE' });
 for (const path of ['', '/facts', '/facts/10', '/categories', '/places', '/places/sognefjord']) {
   const { res } = await call(v(path));
   const etag = res.headers.get('etag');
+  check(etag?.startsWith('W/"'), `GET ${path}: ETag ${etag} should be weak`);
   await request(v(path), 304, { headers: { 'If-None-Match': etag } });
+  await request(v(path), 304, { headers: { 'If-None-Match': etag.replace(/^W\//, '') } });
   await request(v(path), 200, { headers: { 'If-None-Match': '"stale"' } });
 }
 const { res: randomRes } = await call(v('/random-fact'));
@@ -229,19 +247,34 @@ for (const collection of ['/facts', '/categories', '/places']) {
   check(seen.length === total, `${collection}: walked ${seen.length} items via links, total is ${total}`);
 }
 
-// Behind marlasowards.com's proxy, requests arrive on the API site's own
-// host. Links must still use the public origin, never netlify.app. Other
-// hosts (localhost, deploy previews) keep their own origin.
-for (const [host, expected] of [
-  ['https://norway-data-api.netlify.app', serverUrl.origin],
-  ['http://localhost:8888', 'http://localhost:8888'],
-]) {
+// Links use the origin of the request, whatever host was called.
+for (const host of ['https://deploy-preview-1--norway-data-api.netlify.app', 'http://localhost:8888']) {
   const res = await handler(new Request(`${host}${v('/places?limit=2')}`), { requestId: EXAMPLE_REQUEST_ID });
   const body = await res.json();
   const urls = [...Object.values(body.pagination.links).filter(Boolean), res.headers.get('link')];
-  check(urls.every((u) => u.includes(expected)), `links for requests to ${host} should use ${expected}`);
+  check(urls.every((u) => u.includes(host)), `links for requests to ${host} should use ${host}`);
   const indexBody = await (await handler(new Request(`${host}${v('/')}`), {})).json();
-  check(Object.values(indexBody.links).every((u) => u.startsWith(expected)), `index links for ${host} should use ${expected}`);
+  check(Object.values(indexBody.links).every((u) => u.startsWith(host)), `index links for ${host} should use ${host}`);
+  check(indexBody.openapi === `${host}/openapi/norway-data.yaml`, `index openapi link for ${host} is ${indexBody.openapi}`);
+}
+
+// The rate-limited function's 429 matches the documented TooManyRequests
+// response.
+{
+  const res = await rateLimitedHandler(new Request(`${serverUrl.origin}/_rate-limited`), { requestId: EXAMPLE_REQUEST_ID });
+  const doc = spec.components.responses.TooManyRequests;
+  const [mediaType, media] = Object.entries(doc.content)[0];
+  check(res.status === 429, `rate-limited: expected 429, got ${res.status}`);
+  check(res.headers.get('content-type') === mediaType, `rate-limited: content type ${res.headers.get('content-type')}`);
+  check(res.headers.get('cache-control') === 'no-store', 'rate-limited: must not be cached');
+  check(res.headers.get('access-control-allow-origin') === '*', 'rate-limited: missing CORS header');
+  const retryAfter = res.headers.get('retry-after');
+  check(retryAfter !== null && validatorFor(doc.headers['Retry-After'].schema)(retryAfter), `rate-limited: Retry-After is ${retryAfter}`);
+  const body = await res.json();
+  const validate = validatorFor(media.schema);
+  if (!validate(body)) failures.push(`rate-limited: body doesn't match schema: ${ajv.errorsText(validate.errors)}`);
+  check(DOCUMENTED_TYPES.has(body.type), `rate-limited: error type ${body.type} isn't in the Errors table`);
+  check(body.detail.includes(`${retryAfter} seconds`), 'rate-limited: detail and Retry-After disagree');
 }
 
 // ---- Coverage and spec self-checks -----------------------------------------
@@ -325,4 +358,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`API contract test: all ${checks} checks passed.`);
+print(`API contract test: all ${checks} checks passed.`);

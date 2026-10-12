@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: API reference
+    url: https://www.marlasowards.com/api-reference
+    about: Endpoints, errors, rate limits, and examples.

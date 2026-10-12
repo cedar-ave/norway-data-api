@@ -1,22 +1,22 @@
-# The site has no build step. Netlify publishes public/ as-is (the OpenAPI
-# spec) and bundles the function in netlify/functions/.
+# Netlify publishes public/ (the OpenAPI spec) and bundles the functions in
+# netlify/functions/. The build command runs the spec lint and the contract
+# test, so a push that fails them never deploys.
 
 [build]
   publish = "public"
+  command = "npm run lint && npm test"
 
 [functions]
   directory = "netlify/functions"
 
-# The API is meant to be called through https://www.marlasowards.com, which
-# proxies /api/norway-data/* and /openapi/norway-data.yaml here. Visitors to
-# this site's root get sent to the reference page.
+# The API's production domain is api.marlasowards.com. Visitors to the
+# site's root get sent to the reference page.
 [[redirects]]
   from = "/"
   to = "https://www.marlasowards.com/api-reference"
   status = 302
 
-# Lets the portfolio's local dev server (npm start, which doesn't apply
-# Netlify proxy rules) load the spec straight from this site.
+# The reference page on www.marlasowards.com loads the spec from here.
 [[headers]]
   for = "/openapi/*"
   [headers.values]

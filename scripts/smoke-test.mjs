@@ -1,0 +1,139 @@
+// Smoke test against a deployed copy of the API, over the real network.
+// The contract test calls the function in memory, so it can't catch
+// problems that only exist once deployed: routing, redirects, CDN caching,
+// CORS, the rate limiter, or links that point at the wrong host.
+//
+// Usage: node scripts/smoke-test.mjs <base-url> [--rate-limit] [--redirects]
+//
+//   <base-url>     The site's origin, such as https://api.marlasowards.com
+//                  or a deploy preview's URL.
+//   --rate-limit   Also send a burst of requests and check for a problem
+//                  details 429. This uses up the rate limit for the machine
+//                  running the test for about a minute.
+//   --redirects    Also check the redirects to production: from the old
+//                  www.marlasowards.com URLs and from the netlify.app domain.
+//                  Only meaningful when <base-url> is production.
+
+const [baseArg, ...flags] = process.argv.slice(2);
+if (!baseArg) {
+  console.error('Usage: node scripts/smoke-test.mjs <base-url> [--rate-limit] [--redirects]');
+  process.exit(2);
+}
+const BASE = baseArg.replace(/\/+$/, '');
+const API = `${BASE}/norway-data/v1`;
+const PRODUCTION = 'https://api.marlasowards.com';
+
+const failures = [];
+let checks = 0;
+function check(ok, message) {
+  checks++;
+  if (!ok) failures.push(message);
+}
+
+async function get(url, init = {}) {
+  const res = await fetch(url, { redirect: 'manual', ...init });
+  const text = await res.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    // Not JSON - the checks below report that where it matters.
+  }
+  return { res, text, body };
+}
+
+// The unversioned root redirects to the current version.
+{
+  const { res } = await get(`${BASE}/norway-data`);
+  check(res.status === 302, `GET /norway-data: expected 302, got ${res.status}`);
+  check(res.headers.get('location') === API, `GET /norway-data: Location is ${res.headers.get('location')}, expected ${API}`);
+}
+
+// Index: JSON, and every link points at the host that was called.
+{
+  const { res, body } = await get(API);
+  check(res.status === 200, `GET index: expected 200, got ${res.status}`);
+  check(res.headers.get('content-type') === 'application/json', `GET index: content type ${res.headers.get('content-type')}`);
+  const links = Object.values(body?.links ?? {});
+  check(links.length > 0 && links.every((u) => u.startsWith(API)), `GET index: links don't all start with ${API}: ${links.join(', ')}`);
+  check(body?.openapi === `${BASE}/openapi/norway-data.yaml`, `GET index: openapi link is ${body?.openapi}`);
+}
+
+// A collection: pagination links, Link header, CORS, caching headers, and a 304 on revalidation.
+{
+  const url = `${API}/facts?limit=2&utm_source=smoke-test`;
+  const { res, body } = await get(url);
+  check(res.status === 200, `GET facts: expected 200, got ${res.status}`);
+  const links = Object.values(body?.pagination?.links ?? {}).filter(Boolean);
+  check(links.length > 0 && links.every((u) => u.startsWith(`${API}/facts?`) && !u.includes('utm_')), `GET facts: unexpected page links: ${links.join(', ')}`);
+  const linkHeader = res.headers.get('link') ?? '';
+  check(linkHeader.includes(`<${API}/facts?`), `GET facts: Link header doesn't point at ${API}`);
+  check(res.headers.get('access-control-allow-origin') === '*', 'GET facts: missing Access-Control-Allow-Origin');
+  check(res.headers.get('cache-control') === 'public, max-age=3600' || res.headers.get('cache-control') === 'public,max-age=3600', `GET facts: Cache-Control is ${res.headers.get('cache-control')}`);
+  const etag = res.headers.get('etag');
+  check(etag?.startsWith('W/"'), `GET facts: ETag ${etag} should be weak`);
+  if (etag) {
+    const again = await get(url, { headers: { 'If-None-Match': etag } });
+    check(again.res.status === 304, `GET facts with If-None-Match: expected 304, got ${again.res.status}`);
+  }
+}
+
+// Errors are problem details.
+{
+  const { res, body } = await get(`${API}/facts/999999`);
+  check(res.status === 404, `GET unknown fact: expected 404, got ${res.status}`);
+  check(res.headers.get('content-type') === 'application/problem+json', `GET unknown fact: content type ${res.headers.get('content-type')}`);
+  check(body?.type === 'tag:marlasowards.com,2026:norway-data/not-found', `GET unknown fact: type ${body?.type}`);
+  check(typeof body?.requestId === 'string' && body.requestId.length > 0, 'GET unknown fact: missing requestId');
+}
+
+// CORS preflight.
+{
+  const { res } = await get(`${API}/facts`, {
+    method: 'OPTIONS',
+    headers: { Origin: 'https://example.com', 'Access-Control-Request-Method': 'GET' },
+  });
+  check(res.status === 204, `OPTIONS facts: expected 204, got ${res.status}`);
+}
+
+// The spec is served, and other sites can load it.
+{
+  const { res, text } = await get(`${BASE}/openapi/norway-data.yaml`);
+  check(res.status === 200, `GET spec: expected 200, got ${res.status}`);
+  check(text.startsWith('openapi: 3.1.0'), 'GET spec: body is not the OpenAPI document');
+  check(res.headers.get('access-control-allow-origin') === '*', 'GET spec: missing Access-Control-Allow-Origin');
+}
+
+if (flags.includes('--redirects')) {
+  for (const [from, to] of [
+    ['https://www.marlasowards.com/api/norway-data/v1/facts/10', `${PRODUCTION}/norway-data/v1/facts/10`],
+    ['https://www.marlasowards.com/openapi/norway-data.yaml', `${PRODUCTION}/openapi/norway-data.yaml`],
+    ['https://norway-data-api.netlify.app/norway-data/v1/facts/10', `${PRODUCTION}/norway-data/v1/facts/10`],
+  ]) {
+    const { res } = await get(from);
+    check(res.status === 301, `GET ${from}: expected 301, got ${res.status}`);
+    check(res.headers.get('location') === to, `GET ${from}: Location is ${res.headers.get('location')}, expected ${to}`);
+  }
+}
+
+if (flags.includes('--rate-limit')) {
+  // /random-fact is never cached, so every request reaches the rate limiter.
+  let limited = null;
+  for (let i = 0; i < 90 && !limited; i++) {
+    const r = await get(`${API}/random-fact`);
+    if (r.res.status === 429) limited = r;
+  }
+  check(limited !== null, 'Rate limit: 90 requests in a row never got a 429');
+  if (limited) {
+    check(limited.res.headers.get('content-type') === 'application/problem+json', `Rate limit: 429 content type ${limited.res.headers.get('content-type')}`);
+    check(limited.body?.type === 'tag:marlasowards.com,2026:norway-data/rate-limited', `Rate limit: 429 type ${limited.body?.type}`);
+    check(/^\d+$/.test(limited.res.headers.get('retry-after') ?? ''), `Rate limit: Retry-After is ${limited.res.headers.get('retry-after')}`);
+  }
+}
+
+if (failures.length) {
+  console.error(`Smoke test against ${BASE}: ${failures.length} of ${checks} checks failed\n`);
+  for (const f of failures) console.error(`  - ${f}`);
+  process.exit(1);
+}
+console.log(`Smoke test against ${BASE}: all ${checks} checks passed.`);

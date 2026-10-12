@@ -1,6 +1,6 @@
 # The OpenAPI spec
 
-`public/openapi/norway-data.yaml` (OpenAPI 3.1) is the API's contract and the content of its reference page. The reference page at https://www.marlasowards.com/api-reference is rendered by [Scalar](https://scalar.com) from this file, loaded through that site's proxy, so everything on the page comes from here, including the conceptual docs.
+`public/openapi/norway-data.yaml` (OpenAPI 3.1) is the API's contract and the content of its reference page. The reference page at https://www.marlasowards.com/api-reference is rendered by [Scalar](https://scalar.com) from this file, loaded from https://api.marlasowards.com/openapi/norway-data.yaml, so everything on the page comes from here, including the conceptual docs.
 
 **Summary**
 
@@ -15,7 +15,7 @@
 | `info.description` | The conceptual docs (see [The introduction](#the-introduction)) |
 | `info.contact` | Links to the repo's GitHub Issues, so readers know where to report a problem |
 | `info.license` | MIT, the same as the repo |
-| `servers` | The production base URL, `https://www.marlasowards.com/api/norway-data/v1`. Scalar's generated code samples use it, which is why they work as-is. |
+| `servers` | The production base URL, `https://api.marlasowards.com/norway-data/v1`. Scalar's generated code samples use it, which is why they work as-is. |
 | `security: []` | States that there's no authentication. Without it, Redocly's `security-defined` rule fails. |
 | `tags` | One per resource: Index, Facts, Categories, Places |
 | `paths` | One `get` per endpoint |
@@ -60,7 +60,7 @@ Every example in the spec is the exact response to a specific request, so the do
 
 ````markdown
 ```bash
-curl https://www.marlasowards.com/api/norway-data/v1/facts/10
+curl https://api.marlasowards.com/norway-data/v1/facts/10
 ```
 
 ```json

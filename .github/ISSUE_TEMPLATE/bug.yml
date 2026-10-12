@@ -1,0 +1,23 @@
+name: API bug
+description: The API returned an error or a response that doesn't match the docs.
+labels: [bug]
+body:
+  - type: input
+    id: request
+    attributes:
+      label: Request
+      description: The full URL you called, and the method if it wasn't GET.
+      placeholder: https://api.marlasowards.com/norway-data/v1/facts?category=history
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: requestId
+      description: From the error response's body, if you got one.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true

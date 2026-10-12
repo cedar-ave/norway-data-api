@@ -1,43 +1,49 @@
-# The Netlify Function
+# The Netlify Functions
 
-The whole API is one Netlify Function, `netlify/functions/norway-data/norway-data.mjs`, written in the modern Functions format: a default export that takes a standard `Request` and returns a `Response`.
+The API is one Netlify Function, `netlify/functions/norway-data/norway-data.mjs`, plus a small second function, `netlify/functions/rate-limited/rate-limited.mjs`, that answers rate-limited requests. Both use the modern Functions format: a default export that takes a standard `Request` and returns a `Response`.
 
 **Summary**
 
-- `netlify.toml` sets the functions folder (`netlify/functions/`) and publishes `public/`, which holds the spec. There's no build step.
-- The function's URL comes from `export const config = { path: [...] }`, not from a redirect. **Every value in `config` must be a literal.** Netlify reads it without running the code, and a constant or template string fails the deploy.
-- `config.rateLimit` turns on Netlify's rate limiter: 60 requests per 60 seconds per IP address.
+- The site's production domain is `api.marlasowards.com`. Requests go straight to it, with no proxy in between.
+- Netlify's build command runs the spec lint and the contract test, so a push that fails them never deploys.
+- A function's URL comes from `export const config = { path: [...] }`. **Every value in `config` must be a literal.** Netlify reads it without running the code, and a constant or template string fails the deploy.
+- `config.rateLimit` allows 60 requests per 60 seconds per IP address, then rewrites requests to the `rate-limited` function, which returns a problem details `429` with `Retry-After`.
 - Errors are thrown as `ProblemError` and turned into RFC 9457 problem details in one place. Anything else thrown becomes a `500`.
-- Cacheable responses get an `ETag` and support `If-None-Match` (`304`). `/random-fact` is never cached.
+- Every request writes one JSON log line.
 
 ## Netlify setup
 
-This repo deploys to its own Netlify site, `norway-data-api.netlify.app`, on every push to `main`. All the settings are in `netlify.toml`, so nothing needs to be set in the Netlify UI:
+This repo deploys to its own Netlify site on every push to `main`. The site's primary domain is `api.marlasowards.com`, so `norway-data-api.netlify.app` redirects there. All the build settings are in `netlify.toml`:
 
 ```toml
 [build]
   publish = "public"
+  command = "npm run lint && npm test"
 
 [functions]
   directory = "netlify/functions"
 ```
 
-- There's no build command. Netlify publishes `public/` (the spec) as-is.
+- **The build command is a deploy gate.** There's nothing to build, but if the spec lint or the contract test fails, the build fails and Netlify keeps serving the previous deploy.
+- `public/` holds the spec, served at `/openapi/norway-data.yaml`. Its responses allow any origin, so the reference page on `www.marlasowards.com` can load it.
 - A redirect sends visitors to the site's root to the reference page.
-- `/openapi/*` responses allow any origin, so a local dev server on another domain can load the spec.
 
-marlasowards.com proxies `/api/norway-data/*` and `/openapi/norway-data.yaml` to this site, so callers use `www.marlasowards.com` URLs. A proxy rule with status `200` is a rewrite: the caller never sees the `netlify.app` domain.
+Each subfolder of `netlify/functions/` is one function, named after the folder. Netlify bundles each one and everything it imports with esbuild. `npm run check:bundle` runs the same bundler locally and in CI, so a config error shows up before a deploy.
 
-Each subfolder of `netlify/functions/` is one function, named after the folder. Netlify bundles `norway-data.mjs` and everything it imports (`data.mjs`) with esbuild.
+### Why there's no proxy
+
+The API used to be served from `www.marlasowards.com/api/norway-data` through a proxy rule on that site. That caused three problems: proxied requests skipped the rate limit entirely, the function had to rewrite its links because it saw the `netlify.app` host, and every request took an extra hop. A custom domain on this site removed all three. The old URLs now redirect (`301`) to the new ones. See [Design decisions](design-decisions.md).
 
 ## Routing
 
-The function claims its URLs in code:
+The main function claims its URLs in code:
 
 ```js
 export const config = {
-  path: ['/api/norway-data', '/api/norway-data/*'],
+  path: ['/norway-data', '/norway-data/*'],
   rateLimit: {
+    action: 'rewrite',
+    to: '/_rate-limited',
     windowLimit: 60,
     windowSize: 60,
     aggregateBy: ['ip', 'domain'],
@@ -50,11 +56,12 @@ export const config = {
 
 Inside the function, `route()` maps the path to a handler:
 
-1. `/api/norway-data` and `/api/norway-data/v1` go to the index.
-2. Anything else must start with `/api/norway-data/v1/`. The rest of the path is split into segments and decoded with `decodeURIComponent`.
-3. The first segment picks the resource (`facts`, `random-fact`, `categories`, `places`) and the optional second segment is an ID. A third segment, or an unknown resource, returns `404`.
+1. `/norway-data` redirects (`302`) to `/norway-data/v1`, the current major version.
+2. `/norway-data/v1` returns the index.
+3. Anything else must start with `/norway-data/v1/`. The rest of the path is split into segments and decoded with `decodeURIComponent`.
+4. The first segment picks the resource (`facts`, `random-fact`, `categories`, `places`) and the optional second segment is an ID. A third segment, or an unknown resource, returns `404`.
 
-`decodeURIComponent` throws a `URIError` on invalid percent-encoding such as `%E0`. The function catches that and returns a `404`, instead of crashing with a generic Netlify error page.
+`decodeURIComponent` throws a `URIError` on invalid percent-encoding such as `%E0`. The function catches that and returns a `400` (`invalid-path`), instead of crashing with a generic Netlify error page.
 
 ## Methods
 
@@ -73,7 +80,14 @@ Every handler starts by calling `parseQuery(searchParams, rules)` with the param
 - Parameters given more than once.
 - Values that aren't allowed: an enum value that isn't in the list, or an integer that isn't canonical (`010`) or is out of range.
 
-Every problem goes into one `400` response's `errors` array, so a client sees all of them in one round trip. Endpoints with no query parameters call `parseQuery(searchParams, {})`, so any query string at all is rejected.
+Every problem goes into one `400` response's `errors` array, so a client sees all of them in one round trip. Endpoints with no query parameters call `parseQuery(searchParams, {})`, so any other query string is rejected.
+
+Two kinds of parameters are ignored instead of rejected (`IGNORED_PARAM`):
+
+- `utm_*` campaign tracking parameters, which links pick up when they're shared.
+- `_`, which some HTTP clients add to bypass caches.
+
+Rejecting those would break shared links and some clients for no benefit. They're also left out of pagination links.
 
 Path IDs are checked the same strict way:
 
@@ -82,11 +96,13 @@ Path IDs are checked the same strict way:
 
 The `place` query filter would list every place ID in its error message, so it uses a custom `message` that points to `/places` instead.
 
+The `Accept` header is ignored: every response is JSON. The reference page documents this.
+
 ## Pagination
 
 `paginate()` handles every collection, even short ones, so clients only need one code path. It returns `data` plus `pagination` with `total`, `limit`, `offset`, and `links` (`first`, `prev`, `next`, `last`). The same links go in an RFC 8288 `Link` header.
 
-The links are built from the request's own URL (`new URL(req.url)`), so they keep the request's filters and stay on whatever host was called. A deploy preview's links point at the deploy preview, not production.
+Every URL in a response is built from the request's own origin, so links always point at the server that was called: production, a deploy preview, or `localhost`. The only fixed URL is the reference page's (`DOCS_URL`), which can be overridden with a `DOCS_URL` environment variable in Netlify.
 
 ## Caching
 
@@ -102,9 +118,28 @@ const CACHEABLE = {
 - `Cache-Control` lets browsers and other caches keep a response for an hour.
 - `Netlify-CDN-Cache-Control` lets Netlify's CDN keep it until the next deploy, so repeat requests don't run the function at all.
 
-`jsonResponse()` also sets an `ETag`: a SHA-256 hash of the response body. If a request's `If-None-Match` header matches it, the function returns `304 Not Modified` with no body.
+`jsonResponse()` also sets an `ETag`: a hash of the response body. It's a weak `ETag` (`W/"..."`), because Netlify compresses responses, and a strong `ETag` would have to differ for each compression format. If a request's `If-None-Match` header matches it (weak and strong forms both count), the function returns `304 Not Modified` with no body.
 
 `/random-fact` and every error response use `Cache-Control: no-store`. A cached random fact would stop being random.
+
+## Rate limiting
+
+`config.rateLimit` counts requests per IP address and hostname in a sliding 60-second window. Request 61 within any 60 seconds isn't sent to the function. Netlify rewrites it to `/_rate-limited` instead.
+
+The `rate-limited` function returns the same problem details format as every other error, with a `Retry-After: 60` header:
+
+```json
+{
+  "type": "tag:marlasowards.com,2026:norway-data/rate-limited",
+  "title": "Too many requests",
+  "status": 429,
+  "detail": "Too many requests from your IP address. Wait 60 seconds, then retry.",
+  "instance": "/norway-data/v1/random-fact",
+  "requestId": "01JEXAMPLE0REQUEST0ID00000"
+}
+```
+
+Without the rewrite, Netlify would send its own `429` with an empty body and no `Retry-After`, which clients would have to handle as a special case.
 
 ## Errors
 
@@ -116,20 +151,30 @@ Every error is thrown as a `ProblemError` with a slug and a message, and the top
   "title": "Not found",
   "status": 404,
   "detail": "No fact has the ID 99.",
-  "instance": "/api/norway-data/v1/facts/99",
+  "instance": "/norway-data/v1/facts/99",
   "requestId": "01JEXAMPLE0REQUEST0ID00000"
 }
 ```
 
 - **`type`** is a `tag:` URI (RFC 4151). It's an identifier, not a link, so renaming a docs heading or moving the reference page can't change a value clients depend on.
-- **`requestId`** comes from Netlify's `context.requestId`. The same ID is logged with `console.error` for `500`s, so a reported ID can be found in the function logs.
+- **`requestId`** comes from Netlify's `context.requestId`, which is also the response's `X-Nf-Request-Id` header. A reported ID can be found in the function logs.
 - Anything thrown that isn't a `ProblemError` becomes a `500` with a generic message. The real error only goes to the logs.
 
-The rate limiter's `429` is the one error that doesn't come from the function, so it isn't in problem details format.
+## Logging
+
+Every request writes one JSON line to Netlify's function logs:
+
+```json
+{"requestId":"01J...","method":"GET","path":"/norway-data/v1/facts","query":"?category=history","status":200,"durationMs":1}
+```
+
+The logs never include IP addresses or other personal data. A `500` also logs the error itself, with the same `requestId`.
+
+To find a request, open the site in Netlify, go to **Logs** > **Functions**, and search for its `requestId`.
 
 ## Other headers
 
-- `Access-Control-Allow-Origin: *` on every response, and `Access-Control-Expose-Headers: ETag, Link` so browser scripts can read those two.
+- `Access-Control-Allow-Origin: *` on every response, and `Access-Control-Expose-Headers: ETag, Link, Retry-After` so browser scripts can read those three.
 - `X-Content-Type-Options: nosniff`.
 - `Content-Type` is `application/json` for success and `application/problem+json` for errors, with no `charset`. JSON is always UTF-8.
 
@@ -137,12 +182,14 @@ Responses are pretty-printed on purpose so they're readable in a terminal and on
 
 ## Testing the function locally
 
-Run the function with the Netlify CLI:
+Run the functions with the Netlify CLI:
 
 ```bash
 npm run dev
 ```
 
-The API is then at `http://localhost:8888/api/norway-data/v1`.
+The API is then at `http://localhost:8888/norway-data/v1`.
 
-For a quick check without a server, run the [contract test](contract-test.md), which calls the handler directly.
+Run the smoke test against deployed copies, not `localhost`. When a function returns `404`, `netlify dev` retries the path with `.html` added, so an unknown ID such as `/facts/999999` comes back as a `400` for `/facts/999999.html`. Deployed sites don't do this.
+
+For a quick check without a server, run the [contract test](contract-test.md), which calls the handlers directly.

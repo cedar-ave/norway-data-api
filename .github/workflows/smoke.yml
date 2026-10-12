@@ -1,0 +1,42 @@
+# Smoke tests against the deployed API, over the real network (see
+# scripts/smoke-test.mjs).
+# - After each successful Netlify deploy, Netlify reports a GitHub
+#   deployment; this tests that deploy's URL, including the rate limit.
+# - Every hour, this tests production, including the redirects to it. A
+#   failure is the API's uptime alert: GitHub emails the repo owner when a
+#   scheduled workflow fails.
+name: Smoke test
+
+on:
+  deployment_status:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deployed copy
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Smoke test the deploy
+        run: npm run smoke -- "${{ github.event.deployment_status.environment_url }}" --rate-limit
+
+  production:
+    name: Production
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Smoke test production
+        run: npm run smoke -- https://api.marlasowards.com --redirects

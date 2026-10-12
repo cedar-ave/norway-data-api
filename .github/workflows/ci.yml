@@ -1,7 +1,13 @@
-# Lints the OpenAPI spec and runs the contract test, which checks the
-# function's responses against the spec. Netlify deploys on every push no
-# matter what this reports, so merge through pull requests with this check
-# required if a failing run should block publishing.
+# Checks every push and pull request:
+# - lints the OpenAPI spec
+# - runs the contract test, which checks the function's responses against
+#   the spec
+# - bundles the functions the way Netlify does, so a config error fails
+#   here instead of in a deploy
+# - checks that any change to the API comes with a new version and
+#   changelog entry
+# Netlify also runs the lint and contract test as its build command, so a
+# failing push never deploys (see netlify.toml).
 name: CI
 
 on:
@@ -19,12 +25,15 @@ concurrency:
 
 jobs:
   api:
-    name: Spec lint + contract test
+    name: Lint, contract test, bundle, version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # check:version compares against earlier commits.
+          fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -36,3 +45,9 @@ jobs:
 
       - name: Run the contract test
         run: npm test
+
+      - name: Bundle the functions like Netlify does
+        run: npm run check:bundle
+
+      - name: Check the version and changelog
+        run: npm run check:version -- "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -24,7 +24,7 @@ info:
     No account or key is needed. Get fact 10:
 
     ```bash
-    curl https://www.marlasowards.com/api/norway-data/v1/facts/10
+    curl https://api.marlasowards.com/norway-data/v1/facts/10
     ```
 
     ```json
@@ -70,7 +70,7 @@ info:
     To get the facts about a place, filter by its ID:
 
     ```bash
-    curl "https://www.marlasowards.com/api/norway-data/v1/facts?place=svalbard"
+    curl "https://api.marlasowards.com/norway-data/v1/facts?place=svalbard"
     ```
 
     ```json
@@ -101,10 +101,10 @@ info:
         "limit": 10,
         "offset": 0,
         "links": {
-          "first": "https://www.marlasowards.com/api/norway-data/v1/facts?place=svalbard&limit=10&offset=0",
+          "first": "https://api.marlasowards.com/norway-data/v1/facts?place=svalbard&limit=10&offset=0",
           "prev": null,
           "next": null,
-          "last": "https://www.marlasowards.com/api/norway-data/v1/facts?place=svalbard&limit=10&offset=0"
+          "last": "https://api.marlasowards.com/norway-data/v1/facts?place=svalbard&limit=10&offset=0"
         }
       }
     }
@@ -112,7 +112,7 @@ info:
 
     ## Request rules
 
-    - **Base URL:** `https://www.marlasowards.com/api/norway-data/v1`. A
+    - **Base URL:** `https://api.marlasowards.com/norway-data/v1`. A
       trailing slash on any path is optional.
     - **Methods:** every endpoint accepts `GET`, `HEAD`, and `OPTIONS`.
       `HEAD` returns the same status and headers as `GET`, with no body.
@@ -121,15 +121,20 @@ info:
     - **Query parameters:** each endpoint accepts only the parameters listed
       for it. An unknown parameter (such as a misspelled `limt`), a
       parameter given more than once, or a value that isn't allowed returns
-      an error with status `400`. The API never ignores a parameter
-      silently.
+      an error with status `400`. Two kinds of parameters are ignored
+      instead, so shared links and some HTTP clients keep working: campaign
+      tracking parameters that start with `utm_`, and `_`, which some
+      clients add to bypass caches.
     - **Path parameters:** each resource has exactly one URL. For example,
       `/facts/010` returns `400`; use `/facts/10`.
-    - **Unknown paths:** a path that matches no endpoint returns `404`. This
-      includes a path with invalid percent-encoding, such as `/facts/%E0`.
+    - **Unknown paths:** a path that matches no endpoint returns `404`. A
+      path with invalid percent-encoding, such as `/facts/%E0`, returns
+      `400`.
+    - **`Accept` header:** every response is JSON, whatever the `Accept`
+      header asks for. The API doesn't return `406 Not Acceptable`.
     - **Cross-origin requests (CORS):** any website can call the API from a
       browser. Responses include `Access-Control-Allow-Origin: *`, and
-      scripts can read the `ETag` and `Link` headers.
+      scripts can read the `ETag`, `Link`, and `Retry-After` headers.
 
     ## Response format
 
@@ -160,7 +165,7 @@ info:
     The links keep the request's filters:
 
     ```bash
-    curl "https://www.marlasowards.com/api/norway-data/v1/facts?category=history&limit=2&offset=2"
+    curl "https://api.marlasowards.com/norway-data/v1/facts?category=history&limit=2&offset=2"
     ```
 
     ```json
@@ -186,10 +191,10 @@ info:
         "limit": 2,
         "offset": 2,
         "links": {
-          "first": "https://www.marlasowards.com/api/norway-data/v1/facts?category=history&limit=2&offset=0",
-          "prev": "https://www.marlasowards.com/api/norway-data/v1/facts?category=history&limit=2&offset=0",
-          "next": "https://www.marlasowards.com/api/norway-data/v1/facts?category=history&limit=2&offset=4",
-          "last": "https://www.marlasowards.com/api/norway-data/v1/facts?category=history&limit=2&offset=6"
+          "first": "https://api.marlasowards.com/norway-data/v1/facts?category=history&limit=2&offset=0",
+          "prev": "https://api.marlasowards.com/norway-data/v1/facts?category=history&limit=2&offset=0",
+          "next": "https://api.marlasowards.com/norway-data/v1/facts?category=history&limit=2&offset=4",
+          "last": "https://api.marlasowards.com/norway-data/v1/facts?category=history&limit=2&offset=6"
         }
       }
     }
@@ -211,6 +216,8 @@ info:
       value in an `If-None-Match` header. If nothing changed, the API
       returns `304 Not Modified` with no body. Browsers do this
       automatically.
+    - `ETag` values are weak (they start with `W/`), because the same
+      response can be sent with different compression.
     - `/random-fact` responses include `Cache-Control: no-store`, so every
       request gets a new random fact.
     - Error responses include `Cache-Control: no-store`.
@@ -225,10 +232,9 @@ info:
     the limit counts the requests in the last 60 seconds at any moment, not
     in fixed one-minute blocks.
 
-    A request over the limit gets status `429 Too Many Requests`. The
-    hosting platform sends this response, not the API, so it isn't in the
-    problem details format and has no `Retry-After` header. After a `429`,
-    wait 60 seconds before retrying.
+    A request over the limit gets an error with status
+    `429 Too Many Requests` and a `Retry-After` header with the number of
+    seconds to wait before retrying. See [Errors](#description/errors).
 
     ## Errors
 
@@ -238,7 +244,7 @@ info:
     query parameters:
 
     ```bash
-    curl "https://www.marlasowards.com/api/norway-data/v1/facts?limit=0&limt=5"
+    curl "https://api.marlasowards.com/norway-data/v1/facts?limit=0&limt=5"
     ```
 
     ```json
@@ -247,7 +253,7 @@ info:
       "title": "Invalid parameter",
       "status": 400,
       "detail": "2 query parameters are invalid. See errors for details.",
-      "instance": "/api/norway-data/v1/facts?limit=0&limt=5",
+      "instance": "/norway-data/v1/facts?limit=0&limt=5",
       "requestId": "01JEXAMPLE0REQUEST0ID00000",
       "errors": [
         {
@@ -277,8 +283,10 @@ info:
     | Status | `type` | What to do |
     | --- | --- | --- |
     | `400` | `tag:marlasowards.com,2026:norway-data/invalid-parameter` | Fix the parameters listed in `errors`, then retry. |
+    | `400` | `tag:marlasowards.com,2026:norway-data/invalid-path` | Fix the path's percent-encoding. |
     | `404` | `tag:marlasowards.com,2026:norway-data/not-found` | Check the ID or path. Don't retry. |
     | `405` | `tag:marlasowards.com,2026:norway-data/method-not-allowed` | Use `GET`. The `Allow` header lists the supported methods. |
+    | `429` | `tag:marlasowards.com,2026:norway-data/rate-limited` | Wait the number of seconds in the `Retry-After` header, then retry. |
     | `500` | `tag:marlasowards.com,2026:norway-data/internal-error` | Retry later. If it keeps happening, report it with the `requestId`. |
 
     The `type` values are identifiers, not web addresses. They don't open a
@@ -292,10 +300,21 @@ info:
     could break an existing client would ship as `v2` at a new base URL,
     with notice in the changelog.
 
+    `https://api.marlasowards.com/norway-data`, without a version,
+    redirects to the current major version.
+
+    Before version 1.1.0, the base URL was
+    `https://www.marlasowards.com/api/norway-data/v1`. Requests to it are
+    permanently redirected (`301`) to the same path on the current base
+    URL. Most HTTP clients follow redirects automatically. With `curl`, add
+    `-L`.
+
     ## Changelog
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.0 | 11 October 2026 | New base URL, `https://api.marlasowards.com/norway-data/v1`. The old base URL redirects to it. Rate-limited requests now get a problem details `429` with a `Retry-After` header. `utm_*` and `_` query parameters are ignored instead of rejected. A path with invalid percent-encoding returns `400` instead of `404`. `ETag` values are now weak. |
+    | 1.0.1 | 11 October 2026 | Pagination and index links now always use the URL the client called. Added facts about the Kon-Tiki expedition and the Kon-Tiki Museet place. |
     | 1.0.0 | 11 October 2026 | First release. |
 
     ## About the data
@@ -310,7 +329,7 @@ info:
     - To report an error in a fact or a bug in the API, open an issue in
       the [API's GitHub repository](https://github.com/cedar-ave/norway-data-api/issues).
 servers:
-  - url: https://www.marlasowards.com/api/norway-data/v1
+  - url: https://api.marlasowards.com/norway-data/v1
     description: Production
 # Public API: no authentication.
 security: []
@@ -347,12 +366,12 @@ paths:
                 name: Norway Data API
                 version: v1
                 documentation: https://www.marlasowards.com/api-reference
-                openapi: https://www.marlasowards.com/openapi/norway-data.yaml
+                openapi: https://api.marlasowards.com/openapi/norway-data.yaml
                 links:
-                  facts: https://www.marlasowards.com/api/norway-data/v1/facts
-                  randomFact: https://www.marlasowards.com/api/norway-data/v1/random-fact
-                  categories: https://www.marlasowards.com/api/norway-data/v1/categories
-                  places: https://www.marlasowards.com/api/norway-data/v1/places
+                  facts: https://api.marlasowards.com/norway-data/v1/facts
+                  randomFact: https://api.marlasowards.com/norway-data/v1/random-fact
+                  categories: https://api.marlasowards.com/norway-data/v1/categories
+                  places: https://api.marlasowards.com/norway-data/v1/places
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -408,10 +427,10 @@ paths:
                   limit: 1
                   offset: 1
                   links:
-                    first: https://www.marlasowards.com/api/norway-data/v1/facts?category=geography&limit=1&offset=0
-                    prev: https://www.marlasowards.com/api/norway-data/v1/facts?category=geography&limit=1&offset=0
-                    next: https://www.marlasowards.com/api/norway-data/v1/facts?category=geography&limit=1&offset=2
-                    last: https://www.marlasowards.com/api/norway-data/v1/facts?category=geography&limit=1&offset=6
+                    first: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=0
+                    prev: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=0
+                    next: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=2
+                    last: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=6
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -543,10 +562,10 @@ paths:
                   limit: 2
                   offset: 0
                   links:
-                    first: https://www.marlasowards.com/api/norway-data/v1/categories?limit=2&offset=0
+                    first: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=0
                     prev: null
-                    next: https://www.marlasowards.com/api/norway-data/v1/categories?limit=2&offset=2
-                    last: https://www.marlasowards.com/api/norway-data/v1/categories?limit=2&offset=4
+                    next: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=2
+                    last: https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=4
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -603,10 +622,10 @@ paths:
                   limit: 2
                   offset: 0
                   links:
-                    first: https://www.marlasowards.com/api/norway-data/v1/places?limit=2&offset=0
+                    first: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=0
                     prev: null
-                    next: https://www.marlasowards.com/api/norway-data/v1/places?limit=2&offset=2
-                    last: https://www.marlasowards.com/api/norway-data/v1/places?limit=2&offset=14
+                    next: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=2
+                    last: https://api.marlasowards.com/norway-data/v1/places?limit=2&offset=14
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -699,7 +718,7 @@ components:
       description: An identifier for this version of the response. See [Caching](#description/caching).
       schema:
         type: string
-        examples: ['"q1tC4kL0ZHr7n3U2pYbW8xM9aQe"']
+        examples: ['W/"q1tC4kL0ZHr7n3U2pYbW8xM9aQe"']
     CacheControl:
       description: See [Caching](#description/caching).
       schema:
@@ -709,7 +728,7 @@ components:
       description: The same page links as `pagination.links`. See [Pagination](#description/pagination).
       schema:
         type: string
-        examples: ['<https://www.marlasowards.com/api/norway-data/v1/categories?limit=2&offset=0>; rel="first", <https://www.marlasowards.com/api/norway-data/v1/categories?limit=2&offset=2>; rel="next", <https://www.marlasowards.com/api/norway-data/v1/categories?limit=2&offset=4>; rel="last"']
+        examples: ['<https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=0>; rel="first", <https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=2>; rel="next", <https://api.marlasowards.com/norway-data/v1/categories?limit=2&offset=4>; rel="last"']
   schemas:
     CategoryId:
       type: string
@@ -878,7 +897,7 @@ components:
         instance:
           type: string
           description: The request path and query string that caused the error.
-          examples: [/api/norway-data/v1/facts/99]
+          examples: [/norway-data/v1/facts/99]
         requestId:
           type: string
           description: A unique ID for the request.
@@ -910,7 +929,7 @@ components:
         Cache-Control:
           $ref: '#/components/headers/CacheControl'
     BadRequest:
-      description: A parameter is unknown, repeated, or has a value that isn't allowed. See [Errors](#description/errors).
+      description: A parameter is unknown, repeated, or has a value that isn't allowed, or the path has invalid percent-encoding. See [Errors](#description/errors).
       content:
         application/problem+json:
           schema:
@@ -921,7 +940,7 @@ components:
             title: Invalid parameter
             status: 400
             detail: A query parameter is invalid. See errors for details.
-            instance: /api/norway-data/v1/facts?category=food
+            instance: /norway-data/v1/facts?category=food
             requestId: 01JEXAMPLE0REQUEST0ID00000
             errors:
               - parameter: category
@@ -938,10 +957,28 @@ components:
             title: Not found
             status: 404
             detail: No fact has the ID 99.
-            instance: /api/norway-data/v1/facts/99
+            instance: /norway-data/v1/facts/99
             requestId: 01JEXAMPLE0REQUEST0ID00000
     TooManyRequests:
       description: Too many requests from your IP address. See [Rate limits](#description/rate-limits).
+      headers:
+        Retry-After:
+          description: The number of seconds to wait before retrying.
+          schema:
+            type: string
+            pattern: '^\d+$'
+            examples: ['60']
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: tag:marlasowards.com,2026:norway-data/rate-limited
+            title: Too many requests
+            status: 429
+            detail: Too many requests from your IP address. Wait 60 seconds, then retry.
+            instance: /norway-data/v1/random-fact
+            requestId: 01JEXAMPLE0REQUEST0ID00000
     InternalError:
       description: The server hit an unexpected error. See [Errors](#description/errors).
       content:
@@ -953,5 +990,5 @@ components:
             title: Internal error
             status: 500
             detail: The server hit an unexpected error. Try again later.
-            instance: /api/norway-data/v1/facts
+            instance: /norway-data/v1/facts
             requestId: 01JEXAMPLE0REQUEST0ID00000

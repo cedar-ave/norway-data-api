@@ -1,0 +1,23 @@
+name: Data correction
+description: A fact or place is wrong, out of date, or misleading.
+labels: [data]
+body:
+  - type: input
+    id: resource
+    attributes:
+      label: Fact or place
+      description: Its URL or ID.
+      placeholder: https://api.marlasowards.com/norway-data/v1/facts/10
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: What's wrong, and the correction
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: A link that supports the correction.

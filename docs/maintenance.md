@@ -1,11 +1,14 @@
 # Maintaining the API
 
-How to make common changes, and what to check afterward. In every case, run both checks before you push:
+How to make common changes, and what to check afterward. In every case, run the checks before you push:
 
 ```bash
 npm test
 npm run lint
+npm run check:bundle
 ```
+
+Every change to the functions, the data, or the spec also needs a new version. See [Release a change](#release-a-change).
 
 **Summary**
 
@@ -13,6 +16,7 @@ npm run lint
 - **Changing data used in an example:** the contract test reports which examples no longer match. Update them in the spec.
 - **Adding a category:** update `data.mjs`, the `category` parameter's `enum`, and the current values listed in `CategoryId`'s description.
 - **Adding an endpoint:** add a handler and a route in the function, then the path, examples, and a changelog row in the spec, then test cases.
+- **Every change** needs a new `info.version`, a matching `package.json` version, and a changelog row. CI checks this.
 - **Breaking changes** need a `v2`. Within `v1`, changes must be additive.
 
 ## Add a fact
@@ -62,7 +66,17 @@ The conceptual docs are in `info.description` in `public/openapi/norway-data.yam
 2. **Spec:** add the path with its parameters, every response it can return (`200`, `304` if it's cacheable, `400`, `404` if it has an ID, `429`, `500`), and an example with `x-example-request`.
 3. **Index:** if it's a new collection, add it to the index handler's `links` and to the `ApiIndex` schema.
 4. **Contract test:** add requests for each status code. The coverage check lists any you missed.
-5. **Changelog:** add a row and bump `info.version`. A new endpoint is a minor version.
+5. **Release:** see [Release a change](#release-a-change). A new endpoint is a minor version.
+
+## Release a change
+
+1. Bump `info.version` in the spec and `version` in `package.json` to the same value:
+   - **Patch** (1.1.0 → 1.1.1) for fixes and data changes.
+   - **Minor** (1.1.0 → 1.2.0) for new endpoints, parameters, or fields.
+2. Add a row at the top of the changelog table in the spec's introduction, with the date and what changed for clients.
+3. Push. Netlify runs the lint and contract test before deploying, and the smoke test runs against the new deploy.
+
+`npm run check:version -- <commit>` runs CI's version check locally, comparing against `<commit>` (for example, `origin/main`).
 
 ## Breaking changes
 
@@ -83,8 +97,16 @@ If the deploy log shows `Function norway-data has a configuration error`, a valu
 The browser got a response it couldn't read, which almost always means the request didn't reach the function. Netlify's 404 page has no CORS headers, so a browser reports it as a network error.
 
 1. Check that the latest deploy succeeded and that the function shows up in Netlify under **Logs** > **Functions**.
-2. Run `curl -i https://norway-data-api.netlify.app/api/norway-data/v1/facts/10`. A JSON response means the function is up.
-3. Run the same request against `https://www.marlasowards.com`. If step 2 works but this doesn't, the proxy rules in marlasowards.com's `netlify.toml` are the problem.
+2. Run `npm run smoke -- https://api.marlasowards.com --redirects`. It checks the API, the spec, CORS, and the redirects, and names whatever fails.
+3. If the smoke test passes, the problem is on the reference page's side. See the reference page's troubleshooting docs in the marlasowards.com repo.
+
+### The hourly smoke test failed
+
+GitHub emails the repo owner when the scheduled smoke test fails. Open the failed run in the **Actions** tab: the log lists each failed check. Then check the latest Netlify deploy, and the function logs for errors (search for a `requestId` from a failed response).
+
+### A deploy failed, but the build log only shows a test failure
+
+That's the deploy gate working: Netlify's build command runs the lint and contract test, and the previous deploy stays live. Fix the failure (run `npm test` locally to see it) and push again.
 
 ### The API isn't running locally
 
