@@ -145,6 +145,8 @@ The `rate-limited` function returns the same problem details format as every oth
 }
 ```
 
+After the rewrite, the function's `req.url` is `/_rate-limited`, a path the client never requested. So `instance` comes from `context.url`, which is the URL the client requested. Netlify doesn't document that behavior, so the smoke test's rate limit check confirms it in production. If `context.url` is missing, the function falls back to `req.url`.
+
 Without the rewrite, Netlify would send its own `429` with an empty body and no `Retry-After`, which clients would have to handle as a special case.
 
 `/_rate-limited` is a public URL, so the `rate-limited` function has its own `rateLimit` (60 per minute per IP, Netlify's plain `429` past that). Without it, calling `/_rate-limited` directly would run a function with no limit at all. A client that keeps sending after a `429` eventually gets Netlify's empty `429`, which the spec tells clients to handle the same way.

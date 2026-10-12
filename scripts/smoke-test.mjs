@@ -168,6 +168,11 @@ if (flags.includes('--rate-limit')) {
     check(limited.res.headers.get('content-type') === 'application/problem+json', `Rate limit: 429 content type ${limited.res.headers.get('content-type')}`);
     check(limited.body?.type === 'tag:marlasowards.com,2026:norway-data/rate-limited', `Rate limit: 429 type ${limited.body?.type}`);
     check(/^\d+$/.test(limited.res.headers.get('retry-after') ?? ''), `Rate limit: Retry-After is ${limited.res.headers.get('retry-after')}`);
+    // Netlify rewrites the request to /_rate-limited, but instance must be
+    // the path the client requested. This relies on context.url, which
+    // Netlify doesn't document, so only production can confirm it.
+    const requested = new URL(`${API}/random-fact`).pathname;
+    check(limited.body?.instance === requested, `Rate limit: 429 instance is ${limited.body?.instance}, expected ${requested}`);
   }
 }
 

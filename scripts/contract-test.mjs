@@ -310,6 +310,22 @@ for (const host of ['https://deploy-preview-1--norway-data-api.netlify.app', 'ht
   check(unknown.errors[0].parameter.length <= 65, `long parameter name echoed with ${unknown.errors[0].parameter.length} characters`);
 }
 
+// After Netlify's rewrite, the rate-limited function's req.url is
+// /_rate-limited, so the problem's instance must come from context.url, the
+// URL the client requested. The documented TooManyRequests example is the
+// exact response to a rate-limited GET /random-fact. A direct call to
+// /_rate-limited reports its own path.
+{
+  const rewritten = `${serverUrl.origin}/_rate-limited`;
+  const res = await rateLimitedHandler(new Request(rewritten), { requestId: EXAMPLE_REQUEST_ID, url: new URL(`${serverUrl.origin}${v('/random-fact')}`) });
+  const example = spec.components.responses.TooManyRequests.content['application/problem+json'].example;
+  check(isDeepStrictEqual(await res.json(), example), 'rate-limited: the TooManyRequests example isn\'t the actual response to a rate-limited /random-fact');
+  const filtered = await rateLimitedHandler(new Request(rewritten), { url: new URL(`${serverUrl.origin}${v('/facts?category=nature')}`) });
+  check((await filtered.json()).instance === v('/facts?category=nature'), 'rate-limited: instance should include the requested query string');
+  const direct = await rateLimitedHandler(new Request(rewritten), { url: new URL(rewritten) });
+  check((await direct.json()).instance === '/_rate-limited', 'rate-limited: a direct call should report /_rate-limited');
+}
+
 // The rate-limited function's 429 matches the documented TooManyRequests
 // response.
 {
