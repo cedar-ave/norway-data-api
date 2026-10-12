@@ -12,12 +12,7 @@ info:
   # response to that request. scripts/contract-test.mjs checks this, so
   # update the example whenever the data or the API changes.
   description: |
-    The Norway Data API returns short facts about Norway and the places
-    they're about. It's a small, public, read-only API with no uptime or
-    support commitment.
-
-    Every endpoint below has a **Test Request** button that calls the live
-    API from your browser.
+    This is a REST API I built as a sample for my portfolio site. The code samples work. The API returns short facts about Norway and the places they're about. The code, spec, and tests are on [GitHub](https://github.com/cedar-ave/norway-data-api).
 
     ## Quick start
 
