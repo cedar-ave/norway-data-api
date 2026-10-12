@@ -229,6 +229,21 @@ for (const collection of ['/facts', '/categories', '/places']) {
   check(seen.length === total, `${collection}: walked ${seen.length} items via links, total is ${total}`);
 }
 
+// Behind marlasowards.com's proxy, requests arrive on the API site's own
+// host. Links must still use the public origin, never netlify.app. Other
+// hosts (localhost, deploy previews) keep their own origin.
+for (const [host, expected] of [
+  ['https://norway-data-api.netlify.app', serverUrl.origin],
+  ['http://localhost:8888', 'http://localhost:8888'],
+]) {
+  const res = await handler(new Request(`${host}${v('/places?limit=2')}`), { requestId: EXAMPLE_REQUEST_ID });
+  const body = await res.json();
+  const urls = [...Object.values(body.pagination.links).filter(Boolean), res.headers.get('link')];
+  check(urls.every((u) => u.includes(expected)), `links for requests to ${host} should use ${expected}`);
+  const indexBody = await (await handler(new Request(`${host}${v('/')}`), {})).json();
+  check(Object.values(indexBody.links).every((u) => u.startsWith(expected)), `index links for ${host} should use ${expected}`);
+}
+
 // ---- Coverage and spec self-checks -----------------------------------------
 
 for (const [template, item] of Object.entries(spec.paths)) {

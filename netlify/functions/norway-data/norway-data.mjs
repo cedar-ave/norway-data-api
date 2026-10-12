@@ -18,6 +18,14 @@ const SITE = 'https://www.marlasowards.com';
 const DOCS_URL = `${SITE}/api-reference`;
 const SPEC_URL = `${SITE}/openapi/norway-data.yaml`;
 
+// Public requests reach this function through a proxy on SITE, so they
+// arrive with this site's own host. Links in responses must use the public
+// origin instead, or clients would be sent to the netlify.app domain. Any
+// other host (localhost, a deploy preview) keeps its own origin, so links
+// stay on the server that was called.
+const API_SITE_HOST = 'norway-data-api.netlify.app';
+const publicOrigin = (url) => (url.host === API_SITE_HOST ? SITE : url.origin);
+
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
 const MAX_OFFSET = 10000;
@@ -164,8 +172,7 @@ function invalidPathParameter(name, detail) {
 
 // Every collection is paginated the same way, even short ones, so clients
 // need only one code path and a list can grow without a breaking change.
-// Page links use the request's own origin, so they stay on a deploy
-// preview's host instead of jumping to production.
+// Page links use publicOrigin(), so they point at the URL the client called.
 function paginate(req, items, query) {
   const { limit, offset } = query;
   const total = items.length;
@@ -174,7 +181,7 @@ function paginate(req, items, query) {
     const next = new URL(url);
     next.searchParams.set('limit', String(limit));
     next.searchParams.set('offset', String(newOffset));
-    return next.href;
+    return `${publicOrigin(url)}${next.pathname}${next.search}`;
   };
 
   const lastOffset = total === 0 ? 0 : Math.floor((total - 1) / limit) * limit;
@@ -199,8 +206,9 @@ function paginate(req, items, query) {
 // ---- Routes ----------------------------------------------------------------
 
 function index(req) {
-  const { origin, searchParams } = new URL(req.url);
-  parseQuery(searchParams, {});
+  const url = new URL(req.url);
+  const origin = publicOrigin(url);
+  parseQuery(url.searchParams, {});
   return jsonResponse(req, {
     name: 'Norway Data API',
     version: VERSION,
