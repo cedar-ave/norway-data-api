@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.0
+  version: 1.1.1
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -236,6 +236,10 @@ info:
     `429 Too Many Requests` and a `Retry-After` header with the number of
     seconds to wait before retrying. See [Errors](#description/errors).
 
+    A client that keeps sending requests after a `429` can also get `429`
+    responses with an empty body and no `Retry-After` header. Treat any
+    `429` the same way: wait 60 seconds, then retry.
+
     ## Errors
 
     Errors use the problem details format from
@@ -313,6 +317,7 @@ info:
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.1 | 11 October 2026 | Security fixes. Links in responses always use `https`, whatever the request's `X-Forwarded-Proto` header says. Responses include security headers (`Content-Security-Policy`, `Referrer-Policy`, `Cross-Origin-Resource-Policy`, and HSTS with `includeSubDomains`). Error messages shorten long values echoed from the request. |
     | 1.1.0 | 11 October 2026 | New base URL, `https://api.marlasowards.com/norway-data/v1`. The old base URL redirects to it. Rate-limited requests now get a problem details `429` with a `Retry-After` header. `utm_*` and `_` query parameters are ignored instead of rejected. A path with invalid percent-encoding returns `400` instead of `404`. `ETag` values are now weak. |
     | 1.0.1 | 11 October 2026 | Pagination and index links now always use the URL the client called. Added facts about the Kon-Tiki expedition and the Kon-Tiki Museet place. |
     | 1.0.0 | 11 October 2026 | First release. |

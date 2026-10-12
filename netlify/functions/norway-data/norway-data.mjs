@@ -20,9 +20,21 @@ const SPEC_PATH = '/openapi/norway-data.yaml';
 // with the DOCS_URL environment variable in Netlify if it ever moves.
 const DOCS_URL = process.env.DOCS_URL || 'https://www.marlasowards.com/api-reference';
 
-// Every other URL in a response is built from the request's own origin, so
+// Every other URL in a response is built from the request's own host, so
 // links always point at the server that was called: production, a deploy
-// preview, or localhost.
+// preview, or localhost. The scheme is never taken from the request:
+// Netlify builds req.url's scheme from X-Forwarded-Proto, which any caller
+// can set, and a cached response would then hand http:// links to everyone
+// (web cache poisoning). Deployed sites are HTTPS-only, so links always use
+// https, except on localhost.
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+export function originOf(req) {
+  const { host } = new URL(req.url);
+  return `${LOCAL_HOST.test(host) ? 'http' : 'https'}://${host}`;
+}
+
+// Caps any client-supplied text echoed in a response or a log line.
+const clip = (text, max = 64) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -36,9 +48,14 @@ const IGNORED_PARAM = /^(utm_[a-z]+|_)$/;
 // Data only changes when the site deploys, and every deploy purges
 // Netlify's CDN cache. So the CDN may keep responses indefinitely, while
 // browsers and other shared caches revalidate hourly using the ETag.
+//
+// Netlify-Vary limits the CDN's cache key to the documented parameters, so
+// ignored parameters (utm_*, _) can't be used to bypass the cache, and
+// nothing else in a request can split or influence a cached entry.
 const CACHEABLE = {
   'Cache-Control': 'public, max-age=3600',
   'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=31536000',
+  'Netlify-Vary': 'query=category|place|limit|offset',
 };
 const UNCACHEABLE = { 'Cache-Control': 'no-store' };
 
@@ -49,6 +66,18 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Expose-Headers': 'ETag, Link, Retry-After',
 };
+
+// Sent on every response. JSON is never meant to be rendered, framed, or
+// used as a document, so the CSP allows nothing. CORP explicitly allows
+// other origins to read responses (CORS still applies).
+const SECURITY_HEADERS = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Cross-Origin-Resource-Policy': 'cross-origin',
+};
+export const COMMON_HEADERS = { ...SECURITY_HEADERS, ...CORS_HEADERS };
 const ALLOWED_METHODS = 'GET, HEAD, OPTIONS';
 
 // Problem types. The type URI is a stable identifier clients branch on, so
@@ -78,8 +107,7 @@ const serialize = (body) => JSON.stringify(body, null, 2);
 
 const baseHeaders = (contentType) => ({
   'Content-Type': contentType,
-  'X-Content-Type-Options': 'nosniff',
-  ...CORS_HEADERS,
+  ...COMMON_HEADERS,
 });
 
 export function problemResponse(err, req, requestId, extraHeaders = {}) {
@@ -90,7 +118,7 @@ export function problemResponse(err, req, requestId, extraHeaders = {}) {
     title,
     status,
     detail: err.message,
-    instance: url.pathname + url.search,
+    instance: clip(url.pathname + url.search, 256),
     requestId,
     ...err.extensions,
   };
@@ -131,7 +159,7 @@ function parseQuery(searchParams, spec) {
 
   for (const name of names) {
     if (!(name in spec)) {
-      errors.push({ parameter: name, detail: `Unknown parameter. Allowed: ${Object.keys(spec).join(', ') || 'none'}.` });
+      errors.push({ parameter: clip(name), detail: `Unknown parameter. Allowed: ${Object.keys(spec).join(', ') || 'none'}.` });
     } else if (searchParams.getAll(name).length > 1) {
       errors.push({ parameter: name, detail: 'Specify this parameter only once.' });
     }
@@ -186,11 +214,12 @@ function paginate(req, items, query) {
   const total = items.length;
   const url = new URL(req.url);
   for (const name of [...url.searchParams.keys()]) if (IGNORED_PARAM.test(name)) url.searchParams.delete(name);
+  const origin = originOf(req);
   const pageUrl = (newOffset) => {
     const next = new URL(url);
     next.searchParams.set('limit', String(limit));
     next.searchParams.set('offset', String(newOffset));
-    return next.href;
+    return `${origin}${next.pathname}${next.search}`;
   };
 
   const lastOffset = total === 0 ? 0 : Math.floor((total - 1) / limit) * limit;
@@ -215,8 +244,8 @@ function paginate(req, items, query) {
 // ---- Routes ----------------------------------------------------------------
 
 function index(req) {
-  const { origin, searchParams } = new URL(req.url);
-  parseQuery(searchParams, {});
+  const origin = originOf(req);
+  parseQuery(new URL(req.url).searchParams, {});
   return jsonResponse(req, {
     name: 'Norway Data API',
     version: VERSION,
@@ -245,7 +274,7 @@ function getFact(req, rawId) {
   // (/facts/010 is rejected rather than treated as /facts/10).
   if (!/^[1-9]\d*$/.test(rawId)) throw invalidPathParameter('id', 'Must be a positive integer with no leading zeros.');
   const fact = facts.find((f) => f.id === Number(rawId));
-  if (!fact) throw new ProblemError('not-found', `No fact has the ID ${rawId}.`);
+  if (!fact) throw new ProblemError('not-found', `No fact has the ID ${clip(rawId)}.`);
   return jsonResponse(req, fact);
 }
 
@@ -270,17 +299,16 @@ function getPlace(req, id) {
   parseQuery(new URL(req.url).searchParams, {});
   if (!PLACE_ID.test(id)) throw invalidPathParameter('id', 'Must be lowercase letters, digits, and single hyphens, such as sognefjord.');
   const place = places.find((p) => p.id === id);
-  if (!place) throw new ProblemError('not-found', `No place has the ID ${id}.`);
+  if (!place) throw new ProblemError('not-found', `No place has the ID ${clip(id)}.`);
   return jsonResponse(req, place);
 }
 
 // The unversioned root redirects to the current major version, so a client
 // that starts there always lands on a version it can rely on.
 function currentVersion(req) {
-  const { origin } = new URL(req.url);
   return new Response(null, {
     status: 302,
-    headers: { Location: `${origin}${BASE_PATH}`, 'Cache-Control': 'no-store', ...CORS_HEADERS },
+    headers: { Location: `${originOf(req)}${BASE_PATH}`, 'Cache-Control': 'no-store', ...COMMON_HEADERS },
   });
 }
 
@@ -310,14 +338,19 @@ function route(pathname) {
 }
 
 // One structured log line per request, for Netlify's function logs. No IP
-// addresses or other personal data.
+// addresses or other personal data: only documented parameters are logged
+// (clipped), and anything else in the query string is only counted, in case
+// a caller puts a token or personal data in a URL.
+const LOGGED_PARAMS = ['category', 'place', 'limit', 'offset'];
 export function log(req, res, requestId, started) {
   const url = new URL(req.url);
+  const names = [...url.searchParams.keys()];
   console.log(JSON.stringify({
     requestId,
     method: req.method,
-    path: url.pathname,
-    query: url.search,
+    path: clip(url.pathname, 128),
+    params: Object.fromEntries(LOGGED_PARAMS.filter((n) => url.searchParams.has(n)).map((n) => [n, clip(url.searchParams.get(n), 32)])),
+    otherParams: names.filter((n) => !LOGGED_PARAMS.includes(n)).length,
     status: res.status,
     durationMs: Date.now() - started,
   }));
@@ -341,13 +374,13 @@ function handle(req, requestId) {
       if (err instanceof URIError) throw new ProblemError('invalid-path', 'The request path contains malformed percent-encoding.');
       throw err;
     }
-    if (!handler) throw new ProblemError('not-found', `No endpoint matches ${url.pathname}.`);
+    if (!handler) throw new ProblemError('not-found', `No endpoint matches ${clip(url.pathname, 128)}.`);
 
     if (req.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
         headers: {
-          ...CORS_HEADERS,
+          ...COMMON_HEADERS,
           Allow: ALLOWED_METHODS,
           'Access-Control-Allow-Methods': ALLOWED_METHODS,
           'Access-Control-Allow-Headers': 'If-None-Match',
@@ -356,7 +389,7 @@ function handle(req, requestId) {
       });
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      throw new ProblemError('method-not-allowed', `${req.method} isn't supported. This API is read-only.`);
+      throw new ProblemError('method-not-allowed', `${clip(req.method, 16)} isn't supported. This API is read-only.`);
     }
 
     const res = handler(req);

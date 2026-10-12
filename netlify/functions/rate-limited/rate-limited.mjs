@@ -3,7 +3,10 @@
 // clients get the same problem details format as every other error, plus a
 // Retry-After header, instead of Netlify's empty 429.
 //
-// This function has no rate limit of its own, and it does almost no work.
+// /_rate-limited is also a public URL, so it has its own rate limit:
+// without one, calling it directly would run this function without limit
+// and bypass the main function's protection. Netlify answers over-limit
+// requests here with its own empty 429, without running this function.
 
 import { log, problemResponse, ProblemError } from '../norway-data/norway-data.mjs';
 
@@ -22,7 +25,12 @@ export default async (req, context) => {
   return log(req, res, requestId, started);
 };
 
-// Must be a literal - Netlify reads it at deploy time without running the code.
+// Must be literals - Netlify reads this at deploy time without running the code.
 export const config = {
   path: '/_rate-limited',
+  rateLimit: {
+    windowLimit: 60,
+    windowSize: 60,
+    aggregateBy: ['ip', 'domain'],
+  },
 };

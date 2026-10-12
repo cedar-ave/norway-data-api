@@ -7,9 +7,10 @@
 //
 //   <base-url>     The site's origin, such as https://api.marlasowards.com
 //                  or a deploy preview's URL.
-//   --rate-limit   Also send a burst of requests and check for a problem
-//                  details 429. This uses up the rate limit for the machine
-//                  running the test for about a minute.
+//   --rate-limit   Also send bursts of requests and check for a problem
+//                  details 429, and that /_rate-limited has its own limit.
+//                  This uses up the rate limit for the machine running the
+//                  test for about a minute.
 //   --redirects    Also check the redirects to production: from the old
 //                  www.marlasowards.com URLs and from the netlify.app domain.
 //                  Only meaningful when <base-url> is production.
@@ -104,6 +105,32 @@ async function get(url, init = {}) {
   check(res.headers.get('access-control-allow-origin') === '*', 'GET spec: missing Access-Control-Allow-Origin');
 }
 
+// Security: every response carries the security headers, and links never
+// take their scheme from X-Forwarded-Proto (which would let one request
+// poison the cache with http:// links).
+{
+  const expected = {
+    'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'cross-origin-resource-policy': 'cross-origin',
+  };
+  for (const url of [`${API}/facts/10`, `${API}/facts/999999`, `${BASE}/openapi/norway-data.yaml`]) {
+    const { res } = await get(url);
+    for (const [name, value] of Object.entries(expected)) {
+      check(res.headers.get(name) === value, `GET ${url}: ${name} is ${res.headers.get(name)}`);
+    }
+    check(/includeSubDomains/.test(res.headers.get('strict-transport-security') ?? ''), `GET ${url}: Strict-Transport-Security is ${res.headers.get('strict-transport-security')}`);
+  }
+  if (BASE.startsWith('https://')) {
+    // A fresh, unique URL, so this never touches an entry real clients use.
+    const probe = `${API}/facts?limit=1&utm_smoke=${Date.now()}${Math.random().toString(36).slice(2)}`;
+    const { body } = await get(probe, { headers: { 'X-Forwarded-Proto': 'http' } });
+    const links = Object.values(body?.pagination?.links ?? {}).filter(Boolean);
+    check(links.length > 0 && links.every((u) => u.startsWith('https://')), `X-Forwarded-Proto: http changed the links: ${links.join(', ')}`);
+  }
+}
+
 if (flags.includes('--redirects')) {
   for (const [from, to] of [
     ['https://www.marlasowards.com/api/norway-data/v1/facts/10', `${PRODUCTION}/norway-data/v1/facts/10`],
@@ -129,6 +156,17 @@ if (flags.includes('--rate-limit')) {
     check(limited.body?.type === 'tag:marlasowards.com,2026:norway-data/rate-limited', `Rate limit: 429 type ${limited.body?.type}`);
     check(/^\d+$/.test(limited.res.headers.get('retry-after') ?? ''), `Rate limit: Retry-After is ${limited.res.headers.get('retry-after')}`);
   }
+}
+
+if (flags.includes('--rate-limit')) {
+  // /_rate-limited is a public URL, so it must have its own limit: past it,
+  // Netlify answers with an empty 429 instead of running the function.
+  let bare = false;
+  for (let i = 0; i < 90 && !bare; i++) {
+    const r = await get(`${BASE}/_rate-limited`);
+    if (r.res.status === 429 && r.text === '') bare = true;
+  }
+  check(bare, '/_rate-limited: 90 direct requests all ran the function (no rate limit of its own)');
 }
 
 if (failures.length) {

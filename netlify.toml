@@ -6,6 +6,12 @@
   publish = "public"
   command = "npm run lint && npm test"
 
+# Dependencies install from package-lock.json (exact versions and integrity
+# hashes) with install scripts turned off, so no package can run code just
+# by being installed. Nothing here needs install scripts.
+[build.environment]
+  NPM_FLAGS = "--ignore-scripts"
+
 [functions]
   directory = "netlify/functions"
 
@@ -25,8 +31,15 @@
   to = "https://www.marlasowards.com/api-reference"
   status = 302
 
-# The reference page on www.marlasowards.com loads the spec from here.
+# The reference page on www.marlasowards.com loads the spec from here, so
+# any origin may read it. The other headers match the ones the functions set
+# in code (these rules only apply to static files, not function responses).
 [[headers]]
   for = "/openapi/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Content-Security-Policy = "default-src 'none'; frame-ancestors 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Cross-Origin-Resource-Policy = "cross-origin"

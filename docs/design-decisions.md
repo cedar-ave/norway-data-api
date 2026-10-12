@@ -92,6 +92,21 @@ A third review looked at how the API is deployed, verified, and protected. Two o
 
 Agent-focused changes from the same review, such as an MCP server, `llms.txt`, compact responses, sources on each fact, search, and a higher rate limit, were deliberately left for later.
 
+## Security review
+
+A security review the same day found two exploitable problems in production, both now fixed, plus gaps in the surrounding settings.
+
+| Finding | Change |
+| --- | --- |
+| **Cache poisoning (proven).** Links took their scheme from `req.url`, which Netlify builds from the client-controlled `X-Forwarded-Proto` header. One request with `X-Forwarded-Proto: http` got `http://` links cached for everyone who requested the same URL. | Links always use `https` (except on `localhost`), and `Netlify-Vary` limits the cache key to documented parameters. Contract and smoke tests check both. Released as 1.1.1. |
+| **Rate limit bypass (proven).** `/_rate-limited` was a public URL with no limit: 155 direct requests all ran the function. | The `rate-limited` function has its own rate limit. The smoke test checks it. |
+| **Build supply chain.** Netlify's build command downloaded Redocly with `npx --yes`, without the lockfile's integrity checks, before bundling the deployed functions. | Build tools are exact-version dev dependencies, and Netlify and CI install with `--ignore-scripts`. |
+| **Third-party viewer.** Scalar's defaults sent every **Test Request** through `proxy.scalar.com`, turned on telemetry and an "Ask AI" agent, and loaded fonts from `fonts.scalar.com`. | The reference page turns all four off (in the marlasowards.com repo). |
+| No security headers on API responses | CSP, `Referrer-Policy`, `Cross-Origin-Resource-Policy`, and HSTS with `includeSubDomains` on every response and on the spec. |
+| Private vulnerability reporting was off, although `SECURITY.md` told reporters to use it | Turned on, along with Dependabot security updates and CodeQL. A ruleset blocks force-pushes and deletion of `main`. |
+| Logs kept full query strings, and errors echoed client input at any length | Only documented parameters are logged, and echoed values are clipped. |
+| No CAA record, no usage alerts, deploy previews possibly building outsiders' code, account 2FA unverified | Documented as required settings in [Security](security.md#settings-outside-the-code). |
+
 ## Choices that stayed
 
 - **No database.** The data is a JavaScript module, so responses are deterministic, the contract test can compare examples exactly, and there's nothing to provision.

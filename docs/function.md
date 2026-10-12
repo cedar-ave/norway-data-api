@@ -7,7 +7,8 @@ The API is one Netlify Function, `netlify/functions/norway-data/norway-data.mjs`
 - The site's production domain is `api.marlasowards.com`. Requests go straight to it, with no proxy in between.
 - Netlify's build command runs the spec lint and the contract test, so a push that fails them never deploys.
 - A function's URL comes from `export const config = { path: [...] }`. **Every value in `config` must be a literal.** Netlify reads it without running the code, and a constant or template string fails the deploy.
-- `config.rateLimit` allows 60 requests per 60 seconds per IP address, then rewrites requests to the `rate-limited` function, which returns a problem details `429` with `Retry-After`.
+- `config.rateLimit` allows 60 requests per 60 seconds per IP address, then rewrites requests to the `rate-limited` function, which returns a problem details `429` with `Retry-After`. That function has its own rate limit, since it's a public URL too.
+- Links always use `https` (except on `localhost`), never the scheme from the request. See [Security](security.md).
 - Errors are thrown as `ProblemError` and turned into RFC 9457 problem details in one place. Anything else thrown becomes a `500`.
 - Every request writes one JSON log line.
 
@@ -24,6 +25,7 @@ This repo deploys to its own Netlify site on every push to `main`. Its domain is
   directory = "netlify/functions"
 ```
 
+- **Dependencies install from the lockfile with install scripts off** (`NPM_FLAGS = "--ignore-scripts"`), and the build tools are exact-version dev dependencies.
 - **The build command is a deploy gate.** There's nothing to build, but if the spec lint or the contract test fails, the build fails and Netlify keeps serving the previous deploy.
 - `public/` holds the spec, served at `/openapi/norway-data.yaml`. Its responses allow any origin, so the reference page on `www.marlasowards.com` can load it.
 - A redirect sends visitors to the site's root to the reference page.
@@ -102,7 +104,9 @@ The `Accept` header is ignored: every response is JSON. The reference page docum
 
 `paginate()` handles every collection, even short ones, so clients only need one code path. It returns `data` plus `pagination` with `total`, `limit`, `offset`, and `links` (`first`, `prev`, `next`, `last`). The same links go in an RFC 8288 `Link` header.
 
-Every URL in a response is built from the request's own origin, so links always point at the server that was called: production, a deploy preview, or `localhost`. The only fixed URL is the reference page's (`DOCS_URL`), which can be overridden with a `DOCS_URL` environment variable in Netlify.
+Every URL in a response is built by `originOf()` from the request's own host, so links always point at the server that was called: production, a deploy preview, or `localhost`. The scheme is always `https` (except on `localhost`), never the one in `req.url`: Netlify sets that from the `X-Forwarded-Proto` header, which any client controls, and trusting it once let a single request poison the cache with `http://` links. See [Security](security.md#links-and-the-cache).
+
+The only fixed URL is the reference page's (`DOCS_URL`), which can be overridden with a `DOCS_URL` environment variable in Netlify.
 
 ## Caching
 
@@ -112,11 +116,13 @@ The data only changes when the site deploys, and Netlify clears its CDN cache on
 const CACHEABLE = {
   'Cache-Control': 'public, max-age=3600',
   'Netlify-CDN-Cache-Control': 'public, durable, s-maxage=31536000',
+  'Netlify-Vary': 'query=category|place|limit|offset',
 };
 ```
 
 - `Cache-Control` lets browsers and other caches keep a response for an hour.
 - `Netlify-CDN-Cache-Control` lets Netlify's CDN keep it until the next deploy, so repeat requests don't run the function at all.
+- `Netlify-Vary` limits the CDN's cache key to the documented parameters, so ignored parameters (`utm_*`, `_`) can't create new cache entries or bypass the cache.
 
 `jsonResponse()` also sets an `ETag`: a hash of the response body. It's a weak `ETag` (`W/"..."`), because Netlify compresses responses, and a strong `ETag` would have to differ for each compression format. If a request's `If-None-Match` header matches it (weak and strong forms both count), the function returns `304 Not Modified` with no body.
 
@@ -141,6 +147,8 @@ The `rate-limited` function returns the same problem details format as every oth
 
 Without the rewrite, Netlify would send its own `429` with an empty body and no `Retry-After`, which clients would have to handle as a special case.
 
+`/_rate-limited` is a public URL, so the `rate-limited` function has its own `rateLimit` (60 per minute per IP, Netlify's plain `429` past that). Without it, calling `/_rate-limited` directly would run a function with no limit at all. A client that keeps sending after a `429` eventually gets Netlify's empty `429`, which the spec tells clients to handle the same way.
+
 ## Errors
 
 Every error is thrown as a `ProblemError` with a slug and a message, and the top-level handler turns it into an RFC 9457 problem details response:
@@ -159,23 +167,24 @@ Every error is thrown as a `ProblemError` with a slug and a message, and the top
 - **`type`** is a `tag:` URI (RFC 4151). It's an identifier, not a link, so renaming a docs heading or moving the reference page can't change a value clients depend on.
 - **`requestId`** comes from Netlify's `context.requestId`, which is also the response's `X-Nf-Request-Id` header. A reported ID can be found in the function logs.
 - Anything thrown that isn't a `ProblemError` becomes a `500` with a generic message. The real error only goes to the logs.
+- Text echoed from the request (IDs, paths, parameter names, methods) is clipped by `clip()`, so a long URL can't produce a long response.
 
 ## Logging
 
 Every request writes one JSON line to Netlify's function logs:
 
 ```json
-{"requestId":"01J...","method":"GET","path":"/norway-data/v1/facts","query":"?category=history","status":200,"durationMs":1}
+{"requestId":"01J...","method":"GET","path":"/norway-data/v1/facts","params":{"category":"history"},"otherParams":1,"status":200,"durationMs":1}
 ```
 
-The logs never include IP addresses or other personal data. A `500` also logs the error itself, with the same `requestId`.
+Only documented parameters are logged, with clipped values. Any other parameters are only counted (`otherParams`), in case a caller puts a token or personal data in a URL. The logs never include IP addresses. A `500` also logs the error itself, with the same `requestId`.
 
 To find a request, open the site in Netlify, go to **Logs** > **Functions**, and search for its `requestId`.
 
 ## Other headers
 
 - `Access-Control-Allow-Origin: *` on every response, and `Access-Control-Expose-Headers: ETag, Link, Retry-After` so browser scripts can read those three.
-- `X-Content-Type-Options: nosniff`.
+- Security headers on every response: `Strict-Transport-Security`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Cross-Origin-Resource-Policy: cross-origin`. `netlify.toml` sets the same ones on the static spec. See [Security](security.md#response-headers).
 - `Content-Type` is `application/json` for success and `application/problem+json` for errors, with no `charset`. JSON is always UTF-8.
 
 Responses are pretty-printed on purpose so they're readable in a terminal and on the reference page.

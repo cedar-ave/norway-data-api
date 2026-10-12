@@ -258,6 +258,58 @@ for (const host of ['https://deploy-preview-1--norway-data-api.netlify.app', 'ht
   check(indexBody.openapi === `${host}/openapi/norway-data.yaml`, `index openapi link for ${host} is ${indexBody.openapi}`);
 }
 
+// Security: the scheme of links never comes from the request (Netlify sets
+// req.url's scheme from X-Forwarded-Proto, which any caller controls), so a
+// request that arrives as http still gets https links. Only localhost keeps http.
+{
+  const res = await handler(new Request(`http://api.marlasowards.com${v('/places?limit=2')}`), {});
+  const body = await res.json();
+  const urls = [...Object.values(body.pagination.links).filter(Boolean), res.headers.get('link'), ...Object.values((await (await handler(new Request(`http://api.marlasowards.com${v('/')}`), {})).json()).links)];
+  check(urls.every((u) => u.includes('https://api.marlasowards.com') && !u.includes('http://api.')), 'links must use https even when the request arrives as http');
+  const redirect = await handler(new Request('http://api.marlasowards.com/norway-data'), {});
+  check(redirect.headers.get('location') === `https://api.marlasowards.com${basePath}`, `root redirect over http points at ${redirect.headers.get('location')}`);
+}
+
+// Security headers on every kind of response, and the cache key header on
+// cacheable ones.
+{
+  const etag = (await call(v('/facts/10'))).res.headers.get('etag');
+  const cases = [
+    ['200', await call(v('/facts/10'))],
+    ['304', await call(v('/facts/10'), { headers: { 'If-None-Match': etag } })],
+    ['302', await call('/norway-data')],
+    ['204', await call(v('/facts'), { method: 'OPTIONS' })],
+    ['400', await call(v('/facts?limit=0'))],
+    ['404', await call(v('/nope'))],
+    ['405', await call(v('/facts'), { method: 'POST' })],
+    ['429', { res: await rateLimitedHandler(new Request(`${serverUrl.origin}/_rate-limited`), {}) }],
+  ];
+  for (const [label, { res }] of cases) {
+    check(res.status === Number(label), `security headers case ${label}: got status ${res.status}`);
+    check(res.headers.get('content-security-policy') === "default-src 'none'; frame-ancestors 'none'", `${label}: missing or wrong Content-Security-Policy`);
+    check(res.headers.get('x-content-type-options') === 'nosniff', `${label}: missing X-Content-Type-Options`);
+    check(res.headers.get('referrer-policy') === 'no-referrer', `${label}: missing Referrer-Policy`);
+    check(res.headers.get('cross-origin-resource-policy') === 'cross-origin', `${label}: missing Cross-Origin-Resource-Policy`);
+    check(/^max-age=\d+; includeSubDomains$/.test(res.headers.get('strict-transport-security') ?? ''), `${label}: missing Strict-Transport-Security`);
+    check(res.headers.get('access-control-allow-origin') === '*', `${label}: missing CORS header`);
+  }
+  for (const path of ['', '/facts', '/facts/10', '/categories', '/places', '/places/oslo']) {
+    const { res } = await call(v(path));
+    check(res.headers.get('netlify-vary') === 'query=category|place|limit|offset', `GET ${path}: Netlify-Vary is ${res.headers.get('netlify-vary')}`);
+  }
+}
+
+// Client-supplied text echoed in errors is clipped.
+{
+  const long = 'a'.repeat(500);
+  const { res, text } = await call(v(`/places/${long}`));
+  const body = JSON.parse(text);
+  check(res.status === 404 && body.detail.length < 120, `long place ID: detail is ${body.detail.length} characters`);
+  check(body.instance.length <= 257, `long place ID: instance is ${body.instance.length} characters`);
+  const unknown = JSON.parse((await call(v(`/facts?${'b'.repeat(300)}=1`))).text);
+  check(unknown.errors[0].parameter.length <= 65, `long parameter name echoed with ${unknown.errors[0].parameter.length} characters`);
+}
+
 // The rate-limited function's 429 matches the documented TooManyRequests
 // response.
 {

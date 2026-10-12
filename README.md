@@ -33,6 +33,7 @@ This repo deploys to its own Netlify site, whose primary domain is `api.marlasow
 | Lint, contract test, function bundling, version check | CI, on every push and pull request | Also catches Netlify config errors, and API changes without a new version and changelog entry. |
 | Smoke test with rate limit check | After each push to `main`, once production serves the new version | Problems that only exist once deployed: routing, CDN caching, CORS, the rate limiter, wrong-host links. |
 | Smoke test with redirect checks | Every hour, against production | The API being down. A failed run emails the repo owner. |
+| Security checks | Contract test and smoke tests | Missing security headers, links that take their scheme from the request, and a `/_rate-limited` path without its own limit. |
 
 ## Docs
 
@@ -40,6 +41,7 @@ This repo deploys to its own Netlify site, whose primary domain is `api.marlasow
 - [The OpenAPI spec](docs/spec.md): layout, conventions, the introduction, and how examples are tied to real responses
 - [The contract test](docs/contract-test.md): what it checks and how, plus the smoke test and version check
 - [Maintaining the API](docs/maintenance.md): adding facts, places, categories, and endpoints, releasing, and troubleshooting
+- [Security](docs/security.md): the threat model, every control, accepted risks, and settings that live outside the code
 - [Design decisions](docs/design-decisions.md): how the API got its current shape, and why
 
 ## Develop

@@ -43,6 +43,7 @@ The test makes requests that cover each rule in the docs:
 - Following `pagination.links.next` from the first page visits every item in each collection exactly once.
 - Links in responses use the origin of the request, whatever host was called (checked for a deploy preview's host and `localhost`).
 - The `rate-limited` function's `429` matches the spec's `TooManyRequests` response: status, media type, `Retry-After`, body schema, and a documented error `type`.
+- **Security:** a request that arrives as `http://` still gets `https` links; every kind of response (`200`, `302`, `304`, `204`, `400`, `404`, `405`, `429`) has the security headers; cacheable responses have the `Netlify-Vary` cache key header; and long values echoed in errors are clipped.
 
 ### Coverage
 
@@ -88,6 +89,8 @@ Its first runs also caught three real bugs: a path matcher that treated `/v2/fac
 3. `npm run check:bundle`: bundles the functions with Netlify's own bundler, so a config error (such as a non-literal `config.path`) fails here instead of in a deploy.
 4. `npm run check:version`: if anything under `netlify/functions/` or the spec changed, the spec's `info.version` must be new, the changelog must have a row for it, and `package.json`'s version must match.
 
+CI installs with `npm ci --ignore-scripts`, and checkouts don't keep the GitHub token.
+
 Netlify's build command also runs the lint and this test, so a commit that fails them never deploys, whatever CI reports.
 
 ## The smoke test
@@ -99,7 +102,8 @@ The contract test calls the functions in memory, so it can't catch problems that
 - CORS headers, `Cache-Control`, a weak `ETag`, and a `304` on revalidation.
 - An unknown fact returns a problem details `404` with a `requestId`.
 - The spec is served, with CORS.
-- `--rate-limit`: a burst of uncached requests gets a problem details `429` with `Retry-After`.
+- Security headers on a success, an error, and the spec, and `https` links even when the request sends `X-Forwarded-Proto: http` (on a unique URL, so it never touches a cache entry real clients use).
+- `--rate-limit`: a burst of uncached requests gets a problem details `429` with `Retry-After`, and a burst of direct requests to `/_rate-limited` eventually gets Netlify's empty `429` (so it has its own limit).
 - `--redirects`: the old `www.marlasowards.com` URLs and the `netlify.app` domain redirect (`301`) to `api.marlasowards.com`.
 
 `.github/workflows/smoke.yml` runs it:
