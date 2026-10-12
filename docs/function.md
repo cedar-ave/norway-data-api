@@ -13,7 +13,7 @@ The API is one Netlify Function, `netlify/functions/norway-data/norway-data.mjs`
 
 ## Netlify setup
 
-This repo deploys to its own Netlify site on every push to `main`. The site's primary domain is `api.marlasowards.com`, so `norway-data-api.netlify.app` redirects there. All the build settings are in `netlify.toml`:
+This repo deploys to its own Netlify site on every push to `main`. Its domain is `api.marlasowards.com`, and a rule in `netlify.toml` redirects (`301`) the site's `norway-data-api.netlify.app` address there. All the build settings are in `netlify.toml`:
 
 ```toml
 [build]
