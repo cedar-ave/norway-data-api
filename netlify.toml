@@ -14,3 +14,10 @@
   from = "/"
   to = "https://www.marlasowards.com/api-reference"
   status = 302
+
+# Lets the portfolio's local dev server (npm start, which doesn't apply
+# Netlify proxy rules) load the spec straight from this site.
+[[headers]]
+  for = "/openapi/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
