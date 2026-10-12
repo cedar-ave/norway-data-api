@@ -44,6 +44,8 @@ This repo deploys to its own Netlify site, whose primary domain is `api.marlasow
 - [Security](docs/security.md): the threat model, every control, accepted risks, and settings that live outside the code
 - [Design decisions](docs/design-decisions.md): how the API got its current shape, and why
 
+These pages are mirrored, as MDX, in the [Norway Data API section](https://www.marlasowards.com/docs/category/norway-data-api) of the marlasowards.com docs (source: `docs/norway-data-api/` in [cedar-ave/portfolio](https://github.com/cedar-ave/portfolio)). This repo is the source of truth: when you change a doc here, update its mirror there.
+
 ## Develop
 
 Requires Node.js 20 or later.
