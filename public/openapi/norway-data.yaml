@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.2
+  version: 1.1.3
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -235,6 +235,16 @@ info:
     responses with an empty body and no `Retry-After` header. Treat any
     `429` the same way: wait 60 seconds, then retry.
 
+    Responses don't include headers that count your remaining requests,
+    such as `X-RateLimit-Remaining`. To stay under the limit:
+
+    - Reuse responses for the `max-age` in their `Cache-Control` header
+      instead of requesting them again. See [Caching](#description/caching).
+    - Request up to 50 items per page with `limit=50`, instead of many
+      small pages.
+    - To show several random facts, get `/facts?limit=50` once and choose
+      from it, instead of calling `/random-fact` in a loop.
+
     ## Errors
 
     Errors use the problem details format from
@@ -312,6 +322,7 @@ info:
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.3 | 12 October 2026 | Reference page only: clearer endpoint and parameter descriptions, advice on staying under the rate limit, and examples that match what **Test Request** returns. |
     | 1.1.2 | 11 October 2026 | Reference page only: parameter examples now work together, so **Test Request** on **List facts** returns results. |
     | 1.1.1 | 11 October 2026 | Security fixes. Links in responses always use `https`, whatever the request's `X-Forwarded-Proto` header says. Responses include security headers (`Content-Security-Policy`, `Referrer-Policy`, `Cross-Origin-Resource-Policy`, and HSTS with `includeSubDomains`). Error messages shorten long values echoed from the request. |
     | 1.1.0 | 11 October 2026 | New base URL, `https://api.marlasowards.com/norway-data/v1`. The old base URL redirects to it. Rate-limited requests now get a problem details `429` with a `Retry-After` header. `utm_*` and `_` query parameters are ignored instead of rejected. A path with invalid percent-encoding returns `400` instead of `404`. `ETag` values are now weak. |
@@ -349,7 +360,7 @@ paths:
       tags: [Index]
       operationId: getIndex
       summary: Get the API index
-      description: Returns the API's name, version, and links to each collection, this reference page, and the OpenAPI document.
+      description: The starting point for the API. Returns its name and major version, plus links to each collection, this reference page, and the OpenAPI document, so you can explore the API from one URL.
       responses:
         '200':
           description: The API index.
@@ -386,7 +397,7 @@ paths:
       tags: [Facts]
       operationId: listFacts
       summary: List facts
-      description: Returns facts in ID order. Filter by category, place, or both.
+      description: Returns a page of facts, in ID order. Filter by `category`, `place`, or both. With both, a fact must match both filters. If no facts match, `data` is an empty array, not an error.
       parameters:
         - $ref: '#/components/parameters/Category'
         - $ref: '#/components/parameters/Place'
@@ -415,23 +426,28 @@ paths:
                       $ref: '#/components/schemas/Fact'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
-              x-example-request: /facts?category=geography&limit=1&offset=1
+              x-example-request: /facts?category=culture&place=oslo&limit=2&offset=0
               example:
                 data:
-                  - id: 2
-                    category: geography
-                    title: The king of fjords
-                    text: Sognefjord is the longest and deepest fjord in Norway, at about 205 km long and over 1,300 m deep.
-                    placeIds: [sognefjord]
+                  - id: 15
+                    category: culture
+                    title: The Scream
+                    text: Edvard Munch, who painted The Scream, was Norwegian. The National Museum and the Munch museum in Oslo both hold versions of it.
+                    placeIds: [oslo]
+                  - id: 30
+                    category: culture
+                    title: The raft in Oslo
+                    text: The original Kon-Tiki raft is on display at the Kon-Tiki Museet on the Bygdøy peninsula in Oslo.
+                    placeIds: [kon-tiki-museet, oslo]
                 pagination:
-                  total: 7
-                  limit: 1
-                  offset: 1
+                  total: 2
+                  limit: 2
+                  offset: 0
                   links:
-                    first: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=0
-                    prev: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=0
-                    next: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=2
-                    last: https://api.marlasowards.com/norway-data/v1/facts?category=geography&limit=1&offset=6
+                    first: https://api.marlasowards.com/norway-data/v1/facts?category=culture&place=oslo&limit=2&offset=0
+                    prev: null
+                    next: null
+                    last: https://api.marlasowards.com/norway-data/v1/facts?category=culture&place=oslo&limit=2&offset=0
         '304':
           $ref: '#/components/responses/NotModified'
         '400':
@@ -445,7 +461,7 @@ paths:
       tags: [Facts]
       operationId: getFact
       summary: Get a fact
-      description: Returns one fact.
+      description: Returns one fact by its ID. Use it to show a specific fact, such as one you saved earlier. For a different fact each time, use `/random-fact`.
       parameters:
         - name: id
           in: path
@@ -454,7 +470,7 @@ paths:
           schema:
             type: integer
             minimum: 1
-          example: 10
+          example: 3
       responses:
         '200':
           description: The fact.
@@ -489,7 +505,7 @@ paths:
       tags: [Facts]
       operationId: getRandomFact
       summary: Get a random fact
-      description: Returns one fact chosen at random. To choose from one category, add `category`.
+      description: Returns one fact chosen at random, such as for a fact of the day. To choose from one category, add `category`. Responses are never cached, so each request can return a different fact.
       parameters:
         - $ref: '#/components/parameters/Category'
       responses:
@@ -506,11 +522,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Fact'
               example:
-                id: 21
-                category: nature
-                title: Wild reindeer
-                text: Hardangervidda, a mountain plateau in southern Norway, has the largest herd of wild mountain reindeer in Europe.
-                placeIds: [hardangervidda]
+                id: 14
+                category: culture
+                title: Sámi languages
+                text: Sámi languages have official status in Norway, and the Sámi Parliament (Sámediggi) meets in Karasjok.
+                placeIds: [karasjok]
         '400':
           $ref: '#/components/responses/BadRequest'
         '429':
@@ -522,7 +538,7 @@ paths:
       tags: [Categories]
       operationId: listCategories
       summary: List categories
-      description: Returns categories. Use a category's `id` as the `category` filter on `/facts` and `/random-fact`.
+      description: Returns the categories that facts are grouped into, in a fixed order. Use a category's `id` as the `category` filter on `/facts` and `/random-fact`.
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
@@ -580,7 +596,7 @@ paths:
       tags: [Places]
       operationId: listPlaces
       summary: List places
-      description: Returns places in ID order. Use a place's `id` as the `place` filter on `/facts`.
+      description: Returns the places that facts are about, in ID order. Use a place's `id` as the `place` filter on `/facts`, or to look up the places in a fact's `placeIds`.
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
@@ -640,7 +656,7 @@ paths:
       tags: [Places]
       operationId: getPlace
       summary: Get a place
-      description: Returns one place. To get the facts about it, call `/facts?place={id}`.
+      description: Returns one place by its ID. Use it to show the name and description of a place in a fact's `placeIds`. To get the facts about a place, call `/facts?place={id}`.
       parameters:
         - name: id
           in: path
@@ -682,7 +698,7 @@ components:
     Category:
       name: category
       in: query
-      description: Only return facts in this category.
+      description: Only return facts in this category. To get each category's name and description, call `/categories`.
       schema:
         type: string
         enum: [geography, history, culture, nature, economy]
@@ -690,7 +706,7 @@ components:
     Place:
       name: place
       in: query
-      description: Only return facts about this place. Get place IDs from `/places`.
+      description: Only return facts about this place. Get place IDs from `/places`. An ID that isn't a place returns an error with status `400`, not an empty list.
       schema:
         $ref: '#/components/schemas/PlaceId'
       example: oslo
@@ -810,12 +826,15 @@ components:
           type: integer
           minimum: 0
           description: The number of items that match the request, across all pages.
+          examples: [2]
         limit:
           type: integer
           description: The `limit` used for this page.
+          examples: [10]
         offset:
           type: integer
           description: The `offset` used for this page.
+          examples: [0]
         links:
           type: object
           additionalProperties: false
@@ -825,15 +844,19 @@ components:
             first:
               type: string
               format: uri
+              description: The first page.
             prev:
               type: [string, 'null']
               format: uri
+              description: The previous page, or `null` on the first page.
             next:
               type: [string, 'null']
               format: uri
+              description: The next page, or `null` on the last page. To get every item, follow `next` until it's `null`.
             last:
               type: string
               format: uri
+              description: The last page.
     ApiIndex:
       type: object
       additionalProperties: false
@@ -841,6 +864,7 @@ components:
       properties:
         name:
           type: string
+          description: The API's name.
           examples: [Norway Data API]
         version:
           type: string
