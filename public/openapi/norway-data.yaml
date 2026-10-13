@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Norway Data API
-  version: 1.1.10
+  version: 1.1.11
   contact:
     name: Report an issue
     url: https://github.com/cedar-ave/norway-data-api/issues
@@ -67,6 +67,8 @@ info:
     ## Authentication
 
     None. Send requests without credentials.
+
+    # Concepts
 
     ## Data model
 
@@ -202,6 +204,8 @@ info:
 
     New fields can be added to any object, so ignore fields you don't
     recognize. Category IDs and place types can also gain new values.
+
+    # Working with the API
 
     ## Pagination
 
@@ -407,6 +411,8 @@ info:
     If none of these help, [open an issue](https://github.com/cedar-ave/norway-data-api/issues)
     with the request and the `requestId` from the error.
 
+    # About the API
+
     ## Versioning
 
     The major version is part of the base URL (`/v1`). Within `v1`, changes
@@ -445,6 +451,7 @@ info:
 
     | Version | Date | Changes |
     | --- | --- | --- |
+    | 1.1.11 | 13 October 2026 | Reference page only: sections are grouped under Introduction, Concepts, Working with the API, and About the API. |
     | 1.1.10 | 13 October 2026 | Reference page only: the description starts with an Introduction heading. |
     | 1.1.9 | 12 October 2026 | Reference page only: new Best practices, Troubleshooting, Availability, and Glossary sections, and links to a Postman collection and a fact of the day sample app. |
     | 1.1.8 | 12 October 2026 | Reference page only: endpoints and errors have several named examples, such as a filter with no matches, the last page, an `offset` past the end, an unknown place ID, and a repeated parameter. |
