@@ -18,7 +18,7 @@
     "node": ">=20.0"
   },
   "devDependencies": {
-    "@netlify/zip-it-and-ship-it": "16.3.0",
+    "@netlify/zip-it-and-ship-it": "16.5.0",
     "@redocly/cli": "2.62.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
